@@ -120,8 +120,8 @@ export function DashboardPage({ result }) {
   const TEAM_COL_VAL = {
     prsMerged:       m => m.prsMerged,
     prsOpen:         m => m.prsOpen,
-    medianLeadTime:  m => m.medianLeadTime,
-    medianReviewTime:m => m.medianReviewTime,
+    avgLeadTime:     m => m.avgLeadTime,
+    avgReviewTime:   m => m.avgReviewTime,
     changesRequested:m => m.changesRequested,
     reviewsGiven:    m => m.reviewsGiven,
     reviewComments:  m => m.reviewComments,
@@ -248,8 +248,8 @@ export function DashboardPage({ result }) {
                   <StaticTH label="Contributor" />
                   <SortTH label="Merged"        col="prsMerged"        {...teamSort} />
                   <SortTH label="Open"          col="prsOpen"          {...teamSort} />
-                  <SortTH label="Median Lead"   col="medianLeadTime"   {...teamSort} />
-                  <SortTH label="→ Review"      col="medianReviewTime" {...teamSort} />
+                  <SortTH label="Avg Lead"      col="avgLeadTime"      {...teamSort} />
+                  <SortTH label="→ Review"      col="avgReviewTime"    {...teamSort} />
                   <SortTH label="Chg. Req."     col="changesRequested" {...teamSort} />
                   <SortTH label="Reviews Given" col="reviewsGiven"     {...teamSort} />
                   <SortTH label="Rev. Cmts"     col="reviewComments"   {...teamSort} />
@@ -281,8 +281,8 @@ export function DashboardPage({ result }) {
                         <Mono>{fmt(m.prsOpen)}</Mono>
                       </a>
                     </TD>
-                    <TD><LeadTimePill hours={m.medianLeadTime} /></TD>
-                    <TD><Mono>{fmtH(m.medianReviewTime)}</Mono></TD>
+                    <TD><LeadTimePill hours={m.avgLeadTime} /></TD>
+                    <TD><Mono>{fmtH(m.avgReviewTime)}</Mono></TD>
                     <TD><Mono className={m.changesRequested > 0 ? "text-amber-500" : ""}>{fmt(m.changesRequested)}</Mono></TD>
                     <TD><Mono>{fmt(m.reviewsGiven)}</Mono></TD>
                     <TD><Mono>{fmt(m.reviewComments)}</Mono></TD>

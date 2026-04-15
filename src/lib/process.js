@@ -84,7 +84,7 @@ export function processData({ mergedPRs, openPRs, details, reviewData, commentDa
   commits.forEach(c => { const l = c.author?.login; if (!l) return; ensure(l); authors[l].commits++ })
 
   const teamMembers = Object.values(authors).map(a => ({
-    ...a, medianLeadTime: median(a.leadTimes), medianReviewTime: median(a.reviewTimes),
+    ...a, avgLeadTime: avg(a.leadTimes), avgReviewTime: avg(a.reviewTimes),
   })).sort((a, b) => b.prsMerged - a.prsMerged)
 
   const heatmap = {}
@@ -104,7 +104,7 @@ export function processData({ mergedPRs, openPRs, details, reviewData, commentDa
 
   const kpis = {
     mergedCount: mergedPRs.length, openCount: openPRs.length,
-    medianLeadTime: median(allLeadTimes), medianReviewTime: median(allReviewTimes),
+    avgLeadTime: avg(allLeadTimes), avgReviewTime: avg(allReviewTimes),
     stalePRs:      openPRStats.filter(p => p.age > 72 && !p.draft).length,
     prsNoReviewer: openPRStats.filter(p => !p.draft && p.reviewers.length === 0).length,
     commitCount: commits.length, totalAdd, totalDel,
