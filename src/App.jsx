@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Sun, Moon, Settings, Power, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -19,8 +19,10 @@ const LS_REPO   = "paceboard_gh_repo"
 const LS_PERIOD = "paceboard_gh_period"
 const PERIODS   = [{ label:"14d",days:14},{label:"30d",days:30},{label:"60d",days:60},{label:"90d",days:90},{label:"6mo",days:180}]
 
+const ENV_TOKEN = import.meta.env.VITE_GITHUB_TOKEN || ""
+
 function initStep() {
-  const token = localStorage.getItem(LS_TOKEN)
+  const token = ENV_TOKEN || localStorage.getItem(LS_TOKEN)
   const repo  = localStorage.getItem(LS_REPO)
   if (token && repo) return "ready"
   if (token)         return "repos"
@@ -35,7 +37,7 @@ export default function App() {
   const [repos,   setRepos]   = useState([])
 
   // ── persisted prefs ───────────────────────────────────────────────────────
-  const [token,  setToken]  = useState(() => localStorage.getItem(LS_TOKEN)  || "")
+  const [token,  setToken]  = useState(() => ENV_TOKEN || localStorage.getItem(LS_TOKEN)  || "")
   const [repo,   setRepo]   = useState(() => localStorage.getItem(LS_REPO)   || "")
   const [period, setPeriod] = useState(() => parseInt(localStorage.getItem(LS_PERIOD) || "30"))
 
@@ -50,9 +52,16 @@ export default function App() {
   // ── modal state ───────────────────────────────────────────────────────────
   const [showSettings,   setShowSettings]   = useState(false)
   const [showDisconnect, setShowDisconnect] = useState(false)
+  const [lastFetch,      setLastFetch]      = useState(null)
 
   // wire rate limit callback
   useEffect(() => { setRateLimitCallback(setRateLimit) }, [])
+
+  // auto re-fetch when period changes if we already have data loaded
+  const hadResult = useRef(false)
+  useEffect(() => { if (result) hadResult.current = true }, [result])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (hadResult.current) run() }, [period])
 
   // if arriving at "repos" step with a token but no repos list, fetch repos
   useEffect(() => {
@@ -98,6 +107,7 @@ export default function App() {
     try {
       const raw = await loadDashboard(owner, repoName, token, since, (label, pct) => setProgress({ label, pct }))
       setResult({ ...processData(raw), owner, repo: repoName, period })
+      setLastFetch(new Date())
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
   }, [token, period])
@@ -171,10 +181,12 @@ export default function App() {
           <Button variant="ghost" size="icon" onClick={() => setShowSettings(true)} title="Settings">
             <Settings className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => setShowDisconnect(true)} title="Disconnect"
-            className="text-muted-foreground hover:text-destructive">
-            <Power className="h-4 w-4" />
-          </Button>
+          {!ENV_TOKEN && (
+            <Button variant="ghost" size="icon" onClick={() => setShowDisconnect(true)} title="Disconnect"
+              className="text-muted-foreground hover:text-destructive">
+              <Power className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </header>
 
@@ -237,6 +249,21 @@ export default function App() {
 
       {/* Dashboard */}
       {result && !loading && <DashboardPage result={result} />}
+
+      {/* Footer */}
+      <footer className="border-t px-6 py-2 text-xs text-muted-foreground flex items-center gap-1.5 flex-shrink-0 mt-auto">
+        <span className="font-semibold text-foreground/60">◈ Paceboard</span>
+        <span>·</span>
+        <span>
+          {lastFetch
+            ? <>Last data fetch: <span className="font-medium text-foreground/80">{lastFetch.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})} at {lastFetch.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"})}</span></>
+            : "No data fetched yet"}
+        </span>
+        <a href="https://pulldog.dev" target="_blank" rel="noreferrer"
+          className="ml-auto flex items-center gap-1 text-muted-foreground/60 hover:text-muted-foreground transition-colors">
+          🐕 <span>Keep PRs from going stale —</span> <span className="font-medium">pulldog.dev</span> <span className="opacity-50">↗</span>
+        </a>
+      </footer>
 
       {/* Modals */}
       <SettingsDialog

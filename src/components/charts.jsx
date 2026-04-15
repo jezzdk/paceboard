@@ -3,13 +3,20 @@ import { cn } from "@/lib/utils"
 import { fmtDate } from "@/lib/format"
 
 export function BarChart({ data, valueKey = "count", labelKey = "label", color = "bg-primary" }) {
+  const [hov, setHov] = useState(null)
   const max = Math.max(...data.map(d => d[valueKey]), 1)
   return (
-    <div className="flex items-end gap-1.5 h-20">
+    <div className="flex items-end gap-1.5 h-24">
       {data.map((d, i) => (
-        <div key={i} className="flex flex-col items-center gap-1 flex-1">
+        <div key={i} className="flex flex-col items-center gap-1 flex-1 relative"
+          onMouseEnter={() => setHov(i)} onMouseLeave={() => setHov(null)}>
+          {hov === i && (
+            <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-foreground text-background text-[10px] font-mono px-1.5 py-0.5 rounded whitespace-nowrap z-10 pointer-events-none">
+              {d[valueKey]}
+            </div>
+          )}
           <div
-            className={cn("w-full rounded-t transition-all", color, d[valueKey] === 0 && "opacity-20")}
+            className={cn("w-full rounded-t transition-all", hov === i ? "opacity-80" : "", color, d[valueKey] === 0 && "opacity-20")}
             style={{ height: `${(d[valueKey] / max) * 64}px`, minHeight: d[valueKey] > 0 ? 3 : 0 }}
           />
           <span className="text-[10px] text-muted-foreground whitespace-nowrap">{d[labelKey]}</span>
@@ -47,7 +54,8 @@ export function ThroughputChart({ daily, weekly }) {
       </div>
       <div className="flex items-end gap-0.5 h-28 pb-6">
         {data.map((d, i) => {
-          const h = Math.max((d.count / max) * 88, d.count > 0 ? 3 : 0)
+          // Fix: give zero bars a minimum height of 2px so the daily chart is never blank
+          const h = Math.max((d.count / max) * 88, 2)
           return (
             <div key={i} className="flex-1 flex flex-col justify-end items-center h-[88px] relative cursor-default"
               onMouseEnter={() => setHov(i)} onMouseLeave={() => setHov(null)}>
@@ -71,7 +79,18 @@ export function HeatmapCell({ value, max }) {
   return (
     <td title={`${value || 0} reviews`}
       style={{ opacity: value === 0 ? 0.15 : 0.15 + pct * 0.85 }}
-      className="w-8 h-7 text-center text-xs font-mono bg-primary text-primary-foreground border border-background cursor-default select-none">
+      className="w-10 h-9 text-center text-xs font-mono bg-primary text-primary-foreground border border-background cursor-default select-none">
+      {value || ""}
+    </td>
+  )
+}
+
+export function SizeHeatmapCell({ value, max }) {
+  const pct = max > 0 ? value / max : 0
+  return (
+    <td title={`${value || 0} PRs`}
+      style={{ opacity: value === 0 ? 0.12 : 0.15 + pct * 0.85 }}
+      className="w-10 h-9 text-center text-xs font-mono bg-violet-500 text-white border border-background cursor-default select-none">
       {value || ""}
     </td>
   )

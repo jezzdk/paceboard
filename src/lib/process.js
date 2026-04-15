@@ -15,7 +15,7 @@ export function prSize(add = 0, del = 0) {
   return               { label: "XL", variant: "danger"  }
 }
 
-export function processData({ mergedPRs, openPRs, details, reviewData, commentData, commits }) {
+export function processData({ mergedPRs, openPRs, details, reviewData, commentData, commits, openReviewData = [] }) {
   const enriched = mergedPRs.map((pr, i) => {
     const det  = details[i] || pr
     const revs = reviewData[i]  || []
@@ -41,12 +41,17 @@ export function processData({ mergedPRs, openPRs, details, reviewData, commentDa
     }
   })
 
-  const openPRStats = openPRs.map(p => ({
-    number: p.number, title: p.title, author: p.user?.login,
-    age: hoursB(p.created_at, new Date().toISOString()),
-    reviewers: p.requested_reviewers?.map(r => r.login) || [],
-    draft: p.draft,
-  }))
+  const openPRStats = openPRs.map((p, i) => {
+    const revs = openReviewData[i] || []
+    const approved = revs.some(r => r.state === "APPROVED")
+    return {
+      number: p.number, title: p.title, author: p.user?.login,
+      age: hoursB(p.created_at, new Date().toISOString()),
+      reviewers: p.requested_reviewers?.map(r => r.login) || [],
+      draft: p.draft,
+      approved,
+    }
+  })
 
   const authors = {}
   const ensure = login => {
@@ -136,8 +141,19 @@ export function processData({ mergedPRs, openPRs, details, reviewData, commentDa
     return out
   }
 
+  const DOW_LABELS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
+  const dowCounts  = Object.fromEntries(DOW_LABELS.map(d => [d, 0]))
+  mergedPRs.forEach(p => {
+    if (!p.merged_at) return
+    const day = new Date(p.merged_at).getDay() // 0=Sun
+    const lbl = DOW_LABELS[(day + 6) % 7]      // shift so Mon=0
+    dowCounts[lbl]++
+  })
+  const mergeByDayOfWeek = DOW_LABELS.map(lbl => ({ label: lbl, count: dowCounts[lbl] }))
+
   return {
     kpis, enriched, openPRStats, teamMembers, histogram, sizeDist, heatmap,
     mergeFreqDaily: fillGaps(dayB,1), mergeFreqWeekly: fillGaps(weekB,7),
+    mergeByDayOfWeek,
   }
 }
