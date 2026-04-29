@@ -1,9 +1,9 @@
 import { useState } from "react"
-import { Github } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { ghAll } from "@/lib/github"
+import { cn } from "@/lib/utils"
 
 const CLIENT_ID = import.meta.env.VITE_GITHUB_CLIENT_ID || ""
 
@@ -14,7 +14,7 @@ export function TokenPage({ onDone, oauthStatus, oauthError, onConnectWithGithub
   const [showPat,   setShowPat]   = useState(!CLIENT_ID)
   const [showGuide, setShowGuide] = useState(false)
 
-  const isExchanging = oauthStatus === "exchanging"
+  const isExchanging  = oauthStatus === "exchanging"
   const hasOauthError = oauthStatus === "error"
 
   async function connectWithPat() {
@@ -45,8 +45,13 @@ export function TokenPage({ onDone, oauthStatus, oauthError, onConnectWithGithub
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
+          {!CLIENT_ID && (
+            <p className="text-xs text-muted-foreground">
+              OAuth button is hidden because <code className="bg-muted px-1 rounded font-mono">VITE_GITHUB_CLIENT_ID</code> is not set.
+            </p>
+          )}
 
-          {/* OAuth section */}
+          {/* OAuth */}
           {CLIENT_ID && (
             <div className="space-y-2">
               {isExchanging ? (
@@ -56,7 +61,6 @@ export function TokenPage({ onDone, oauthStatus, oauthError, onConnectWithGithub
                 </div>
               ) : (
                 <Button className="w-full gap-2" onClick={onConnectWithGithub}>
-                  <Github className="h-4 w-4" />
                   Connect with GitHub
                 </Button>
               )}
@@ -66,7 +70,6 @@ export function TokenPage({ onDone, oauthStatus, oauthError, onConnectWithGithub
             </div>
           )}
 
-          {/* Divider between OAuth and PAT */}
           {CLIENT_ID && (
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
@@ -82,7 +85,7 @@ export function TokenPage({ onDone, oauthStatus, oauthError, onConnectWithGithub
             </div>
           )}
 
-          {/* PAT section */}
+          {/* PAT */}
           {showPat && (
             <div className="space-y-3">
               <Input type="password" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
@@ -115,29 +118,49 @@ export function TokenPage({ onDone, oauthStatus, oauthError, onConnectWithGithub
                         Select scopes:
                         <ul className="mt-1 ml-4 space-y-1 list-disc">
                           <li><code className="bg-muted px-1 rounded font-mono">repo</code> — full repository access (required)</li>
-                          <li><code className="bg-muted px-1 rounded font-mono">read:org</code> — add this to include organisation repositories</li>
+                          <li><code className="bg-muted px-1 rounded font-mono">read:org</code> — add this to include organisation repos</li>
                         </ul>
                       </li>
-                      <li>Click <span className="font-medium text-foreground">Generate token</span> and copy it immediately — it's only shown once</li>
+                      <li>Click <span className="font-medium text-foreground">Generate token</span> and copy it — it&apos;s only shown once</li>
                     </ol>
                     <p className="pt-1 border-t border-border/50">
-                      Tokens are stored in your browser's localStorage and never sent anywhere except directly to the GitHub API.
+                      Tokens are stored in your browser&apos;s localStorage and never sent anywhere except directly to the GitHub API.
                     </p>
                   </div>
                 )}
               </div>
             </div>
           )}
-
         </CardContent>
       </Card>
     </div>
   )
 }
 
+// Multi-select repo picker used during initial setup
 export function RepoPage({ repos, onSelect, onBack }) {
-  const [search, setSearch] = useState("")
-  const filtered = repos.filter(r => r.full_name.toLowerCase().includes(search.toLowerCase()))
+  const [search,   setSearch]   = useState("")
+  const [selected, setSelected] = useState(new Set())
+
+  const filtered = repos.filter(r =>
+    r.full_name.toLowerCase().includes(search.toLowerCase())
+  )
+
+  function toggle(fullName) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      next.has(fullName) ? next.delete(fullName) : next.add(fullName)
+      return next
+    })
+  }
+
+  function handleContinue() {
+    const ordered = repos
+      .filter(r => selected.has(r.full_name))
+      .map(r => r.full_name)
+    onSelect(ordered)
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
       <div className="mb-8 text-center">
@@ -146,28 +169,57 @@ export function RepoPage({ repos, onSelect, onBack }) {
       </div>
       <Card className="w-full max-w-lg">
         <CardHeader>
-          <CardTitle>Select a repository</CardTitle>
-          <p className="text-sm text-muted-foreground mt-1">{repos.length} repos available</p>
+          <CardTitle>Select repositories</CardTitle>
+          <p className="text-sm text-muted-foreground mt-1">
+            {repos.length} repos available · {selected.size} selected
+          </p>
         </CardHeader>
         <CardContent className="space-y-3">
           <Input placeholder="Filter repos…" value={search} onChange={e => setSearch(e.target.value)} autoFocus />
           <div className="border rounded-lg overflow-y-auto max-h-80">
-            {filtered.map(r => (
-              <button key={r.full_name} onClick={() => onSelect(r.full_name)}
-                className="w-full flex items-center gap-3 px-4 py-3 border-b last:border-0 hover:bg-muted/50 transition-colors text-left">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold truncate">{r.full_name}</div>
-                  {r.description && <div className="text-xs text-muted-foreground truncate mt-0.5">{r.description}</div>}
-                </div>
-                <div className="flex gap-1.5 flex-shrink-0">
-                  {r.private && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">private</span>}
-                  {r.language && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{r.language}</span>}
-                </div>
-              </button>
-            ))}
-            {filtered.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">No repos match "{search}"</p>}
+            {filtered.map(r => {
+              const checked = selected.has(r.full_name)
+              return (
+                <label
+                  key={r.full_name}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-3 border-b last:border-0 cursor-pointer transition-colors",
+                    checked ? "bg-accent" : "hover:bg-muted/50"
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggle(r.full_name)}
+                    className="accent-primary flex-shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold truncate">{r.full_name}</div>
+                    {r.description && (
+                      <div className="text-xs text-muted-foreground truncate mt-0.5">{r.description}</div>
+                    )}
+                  </div>
+                  <div className="flex gap-1.5 flex-shrink-0">
+                    {r.private && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">private</span>
+                    )}
+                    {r.language && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{r.language}</span>
+                    )}
+                  </div>
+                </label>
+              )
+            })}
+            {filtered.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-6">No repos match &ldquo;{search}&rdquo;</p>
+            )}
           </div>
-          <Button variant="ghost" size="sm" onClick={onBack} className="text-muted-foreground">← Back</Button>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={onBack} className="text-muted-foreground">← Back</Button>
+            <Button className="ml-auto" onClick={handleContinue} disabled={selected.size === 0}>
+              Continue {selected.size > 0 ? `(${selected.size})` : ""}
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

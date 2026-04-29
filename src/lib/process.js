@@ -1,15 +1,23 @@
 const hoursB = (a, b) => (new Date(b) - new Date(a)) / 3_600_000
 const avg    = a => a.length ? a.reduce((s, v) => s + v, 0) / a.length : null
 
-export function processData({ mergedPRs, openPRs }) {
-  const enriched = mergedPRs.map(pr => ({
+function enrichPRs(prs) {
+  return prs.map(pr => ({
     number:    pr.number,
     title:     pr.title,
     author:    pr.user?.login,
     createdAt: pr.created_at,
     mergedAt:  pr.merged_at,
     leadTime:  hoursB(pr.created_at, pr.merged_at),
+    repo:      pr._repo,
+    owner:     pr._owner,
+    repoName:  pr._repoName,
   }))
+}
+
+export function processData({ mergedPRs, prevMergedPRs = [], openPRs }) {
+  const enriched     = enrichPRs(mergedPRs)
+  const prevEnriched = enrichPRs(prevMergedPRs)
 
   const openPRStats = openPRs.map(p => ({
     number:    p.number,
@@ -18,9 +26,13 @@ export function processData({ mergedPRs, openPRs }) {
     age:       hoursB(p.created_at, new Date().toISOString()),
     reviewers: p.requested_reviewers?.map(r => r.login) || [],
     draft:     p.draft,
+    repo:      p._repo,
+    owner:     p._owner,
+    repoName:  p._repoName,
   }))
 
-  const allLeadTimes = enriched.map(p => p.leadTime)
+  const allLeadTimes  = enriched.map(p => p.leadTime)
+  const prevLeadTimes = prevEnriched.map(p => p.leadTime)
 
   const kpis = {
     mergedCount:   mergedPRs.length,
@@ -30,13 +42,18 @@ export function processData({ mergedPRs, openPRs }) {
     prsNoReviewer: openPRStats.filter(p => !p.draft && p.reviewers.length === 0).length,
   }
 
+  const prevKpis = {
+    mergedCount: prevMergedPRs.length,
+    avgLeadTime: avg(prevLeadTimes),
+  }
+
   const ltBuckets = [
-    { label: "<2h",  max: 2   },
-    { label: "2–8h", max: 8   },
-    { label: "8–24h",max: 24  },
-    { label: "1–3d", max: 72  },
-    { label: "3–7d", max: 168 },
-    { label: ">7d",  max: Infinity },
+    { label: "<2h",   max: 2   },
+    { label: "2–8h",  max: 8   },
+    { label: "8–24h", max: 24  },
+    { label: "1–3d",  max: 72  },
+    { label: "3–7d",  max: 168 },
+    { label: ">7d",   max: Infinity },
   ]
   const histogram = ltBuckets.map((b, i) => ({
     label: b.label,
@@ -66,6 +83,7 @@ export function processData({ mergedPRs, openPRs }) {
 
   return {
     kpis,
+    prevKpis,
     enriched,
     openPRStats,
     histogram,

@@ -62,7 +62,7 @@ function SectionLabel({ children, count, ok, source }) {
       </div>
       {count != null && (
         <span className={cn("text-xs font-mono font-bold",
-          ok       ? "text-emerald-500"
+          ok          ? "text-emerald-500"
           : count > 0 ? "text-amber-500"
           : "text-muted-foreground",
         )}>
@@ -79,7 +79,10 @@ function Empty({ children }) {
 
 // ── PR row ────────────────────────────────────────────────────────────────────
 
-function PRRow({ pr, pill, href }) {
+function PRRow({ pr, pill }) {
+  const href = pr.owner && pr.repoName
+    ? `https://github.com/${pr.owner}/${pr.repoName}/pull/${pr.number}`
+    : null
   return (
     <div className="flex items-center gap-2">
       <AuthorCell login={pr.author} />
@@ -115,32 +118,17 @@ function IssueRow({ issue }) {
 
 export function DashboardPage({ result, linear }) {
   const {
-    kpis, enriched, openPRStats, histogram,
+    kpis, prevKpis, enriched, openPRStats, histogram,
     mergeFreqDaily, mergeFreqWeekly,
-    owner, repo,
+    period,
   } = result
 
-  const ghBase = owner && repo ? `https://github.com/${owner}/${repo}` : null
-  const now = Date.now()
+  const periodLabel = period >= 60
+    ? period === 180 ? "6mo" : `${period}d`
+    : `${period}d`
 
-  const inWindow = (d, minDays, maxDays) => {
-    const age = (now - new Date(d).getTime()) / 86_400_000
-    return age >= minDays && age < maxDays
-  }
-
-  // GitHub weekly deltas
-  const last7Count  = mergeFreqDaily.filter(d => inWindow(d.date, 0,  7)).reduce((s, d) => s + d.count, 0)
-  const prior7Count = mergeFreqDaily.filter(d => inWindow(d.date, 7, 14)).reduce((s, d) => s + d.count, 0)
-
-  const last7PRs  = enriched.filter(p => inWindow(p.mergedAt, 0,  7))
-  const prior7PRs = enriched.filter(p => inWindow(p.mergedAt, 7, 14))
-  const avgLT = arr => arr.length ? arr.reduce((s, p) => s + p.leadTime, 0) / arr.length : null
-  const lt7    = avgLT(last7PRs)
-  const ltPrior = avgLT(prior7PRs)
-
-  // Attention panels
-  const agingPRs   = openPRStats.filter(p => p.age > 72 && !p.draft).sort((a, b) => b.age - a.age)
-  const noReviewer = openPRStats.filter(p => !p.draft && p.reviewers.length === 0).sort((a, b) => b.age - a.age)
+  const agingPRs    = openPRStats.filter(p => p.age > 72 && !p.draft).sort((a, b) => b.age - a.age)
+  const noReviewer  = openPRStats.filter(p => !p.draft && p.reviewers.length === 0).sort((a, b) => b.age - a.age)
   const recentMerged = [...enriched].sort((a, b) => new Date(b.mergedAt) - new Date(a.mergedAt)).slice(0, 8)
 
   const hasLinear = !!linear
@@ -154,8 +142,8 @@ export function DashboardPage({ result, linear }) {
         <KpiCard
           label="PRs merged"
           value={kpis.mergedCount}
-          sub={`${last7Count} last 7d · ${prior7Count} prior 7d`}
-          trend={<Trend current={last7Count} previous={prior7Count} higherIsBetter />}
+          sub={`vs ${prevKpis.mergedCount} prev ${periodLabel}`}
+          trend={<Trend current={kpis.mergedCount} previous={prevKpis.mergedCount} higherIsBetter />}
         />
 
         {hasLinear && (
@@ -171,8 +159,8 @@ export function DashboardPage({ result, linear }) {
         <KpiCard
           label="Avg lead time"
           value={fmtH(kpis.avgLeadTime)}
-          sub={lt7 != null ? `${fmtH(lt7)} last 7d · ${ltPrior != null ? fmtH(ltPrior) + " prior 7d" : "no prior data"}` : undefined}
-          trend={<Trend current={lt7} previous={ltPrior} higherIsBetter={false} />}
+          sub={prevKpis.avgLeadTime != null ? `vs ${fmtH(prevKpis.avgLeadTime)} prev ${periodLabel}` : "no prior data"}
+          trend={<Trend current={kpis.avgLeadTime} previous={prevKpis.avgLeadTime} higherIsBetter={false} />}
         />
 
         {hasLinear && (
@@ -244,9 +232,7 @@ export function DashboardPage({ result, linear }) {
               : (
                 <div className="space-y-2.5">
                   {agingPRs.slice(0, 7).map(p => (
-                    <PRRow key={p.number} pr={p}
-                      href={ghBase ? `${ghBase}/pull/${p.number}` : null}
-                      pill={<AgePill hours={p.age} />} />
+                    <PRRow key={`${p.repo}-${p.number}`} pr={p} pill={<AgePill hours={p.age} />} />
                   ))}
                 </div>
               )}
@@ -262,9 +248,7 @@ export function DashboardPage({ result, linear }) {
               : (
                 <div className="space-y-2.5">
                   {noReviewer.slice(0, 7).map(p => (
-                    <PRRow key={p.number} pr={p}
-                      href={ghBase ? `${ghBase}/pull/${p.number}` : null}
-                      pill={<AgePill hours={p.age} />} />
+                    <PRRow key={`${p.repo}-${p.number}`} pr={p} pill={<AgePill hours={p.age} />} />
                   ))}
                 </div>
               )}
@@ -300,9 +284,7 @@ export function DashboardPage({ result, linear }) {
               : (
                 <div className="space-y-2.5">
                   {recentMerged.map(p => (
-                    <PRRow key={p.number} pr={p}
-                      href={ghBase ? `${ghBase}/pull/${p.number}` : null}
-                      pill={<LeadTimePill hours={p.leadTime} />} />
+                    <PRRow key={`${p.repo}-${p.number}`} pr={p} pill={<LeadTimePill hours={p.leadTime} />} />
                   ))}
                 </div>
               )}

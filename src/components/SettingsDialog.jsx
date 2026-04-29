@@ -1,52 +1,52 @@
 import { useState, useEffect } from "react"
+import { Sun, Monitor, Moon } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
-import { ghAll } from "@/lib/github"
 import { verifyLinearToken, getLinearTeams } from "@/lib/linear"
 
-const PERIODS = [14, 30, 60, 90, 180]
+const POLL_OPTIONS = [
+  { label: "30s", value: 0.5 },
+  { label: "1m",  value: 1   },
+  { label: "2m",  value: 2   },
+  { label: "5m",  value: 5   },
+  { label: "15m", value: 15  },
+  { label: "30m", value: 30  },
+]
+
+const THEME_OPTIONS = [
+  { value: "light",  label: "Light",  Icon: Sun     },
+  { value: "system", label: "System", Icon: Monitor },
+  { value: "dark",   label: "Dark",   Icon: Moon    },
+]
 
 export function SettingsDialog({
-  open, onClose, token,
-  currentRepo, currentPeriod,
-  currentLinearToken, currentLinearTeam,
+  open, onClose,
+  currentTheme,
+  currentPollInterval,
+  currentLinearToken,
+  currentLinearTeam,
   onSave,
 }) {
-  // GitHub
-  const [repos,          setRepos]          = useState([])
-  const [loadingRepos,   setLoadingRepos]   = useState(false)
-  const [repoSearch,     setRepoSearch]     = useState("")
-  const [selectedRepo,   setSelectedRepo]   = useState(currentRepo)
-  const [selectedPeriod, setSelectedPeriod] = useState(currentPeriod)
-
-  // Linear
-  const [linToken,      setLinToken]      = useState(currentLinearToken || "")
-  const [linTeams,      setLinTeams]      = useState([])
-  const [linTeamId,     setLinTeamId]     = useState(currentLinearTeam || "")
-  const [linVerifying,  setLinVerifying]  = useState(false)
-  const [linConnected,  setLinConnected]  = useState(false)
-  const [linError,      setLinError]      = useState(null)
+  const [selectedTheme,    setSelectedTheme]    = useState(currentTheme)
+  const [selectedPoll,     setSelectedPoll]     = useState(currentPollInterval)
+  const [linToken,         setLinToken]         = useState(currentLinearToken || "")
+  const [linTeams,         setLinTeams]         = useState([])
+  const [linTeamId,        setLinTeamId]        = useState(currentLinearTeam || "")
+  const [linVerifying,     setLinVerifying]     = useState(false)
+  const [linConnected,     setLinConnected]     = useState(false)
+  const [linError,         setLinError]         = useState(null)
 
   useEffect(() => {
     if (!open) return
-    setSelectedRepo(currentRepo)
-    setSelectedPeriod(currentPeriod)
-    setRepoSearch("")
+    setSelectedTheme(currentTheme)
+    setSelectedPoll(currentPollInterval)
     setLinToken(currentLinearToken || "")
     setLinTeamId(currentLinearTeam || "")
     setLinTeams([])
     setLinConnected(false)
     setLinError(null)
-
-    if (token && repos.length === 0) {
-      setLoadingRepos(true)
-      ghAll("https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member", token)
-        .then(r => setRepos(r.sort((a, b) => a.full_name.localeCompare(b.full_name))))
-        .catch(() => {})
-        .finally(() => setLoadingRepos(false))
-    }
 
     if (currentLinearToken) {
       setLinVerifying(true)
@@ -67,7 +67,7 @@ export function SettingsDialog({
       setLinTeams(teams)
       setLinConnected(true)
       if (teams.length === 1) setLinTeamId(teams[0].id)
-    } catch (e) {
+    } catch {
       setLinError("Could not connect — check your API key.")
     } finally {
       setLinVerifying(false)
@@ -75,14 +75,8 @@ export function SettingsDialog({
   }
 
   function disconnectLinear() {
-    setLinToken("")
-    setLinTeamId("")
-    setLinTeams([])
-    setLinConnected(false)
-    setLinError(null)
+    setLinToken(""); setLinTeamId(""); setLinTeams([]); setLinConnected(false); setLinError(null)
   }
-
-  const filtered = repos.filter(r => r.full_name.toLowerCase().includes(repoSearch.toLowerCase()))
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
@@ -93,49 +87,52 @@ export function SettingsDialog({
 
         <div className="flex-1 overflow-y-auto px-6 pb-2 space-y-6">
 
-          {/* Period */}
+          {/* Theme */}
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">Period</label>
-            <div className="flex gap-2 flex-wrap">
-              {PERIODS.map(p => (
-                <button key={p} onClick={() => setSelectedPeriod(p)}
-                  className={cn("px-3 py-1.5 rounded-md text-sm font-semibold border transition-colors",
-                    selectedPeriod === p
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">
+              Theme
+            </label>
+            <div className="flex gap-2">
+              {THEME_OPTIONS.map(({ value, label, Icon }) => (
+                <button
+                  key={value}
+                  onClick={() => setSelectedTheme(value)}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold border transition-colors",
+                    selectedTheme === value
                       ? "bg-primary text-primary-foreground border-primary"
-                      : "border-input bg-background text-muted-foreground hover:text-foreground")}>
-                  {p < 60 ? `${p}d` : p === 60 ? "60d" : p === 90 ? "90d" : "6mo"}
+                      : "border-input bg-background text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {label}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Repository */}
+          {/* Poll interval */}
           <div>
-            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">Repository</label>
-            <Input placeholder="Filter repos…" value={repoSearch} onChange={e => setRepoSearch(e.target.value)} className="mb-2" />
-            {loadingRepos
-              ? <p className="text-sm text-muted-foreground py-4 text-center">Loading repos…</p>
-              : (
-                <div className="border rounded-lg overflow-hidden max-h-52 overflow-y-auto">
-                  {filtered.map(r => (
-                    <label key={r.full_name}
-                      className={cn("flex items-center gap-3 px-3 py-2.5 cursor-pointer border-b last:border-0 transition-colors",
-                        selectedRepo === r.full_name ? "bg-accent" : "hover:bg-muted/50")}>
-                      <input type="radio" name="settingsRepo" checked={selectedRepo === r.full_name}
-                        onChange={() => setSelectedRepo(r.full_name)}
-                        className="accent-primary flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium truncate">{r.full_name}</div>
-                        {r.description && <div className="text-xs text-muted-foreground truncate">{r.description}</div>}
-                      </div>
-                      <div className="flex gap-1.5 flex-shrink-0">
-                        {r.private && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">private</span>}
-                        {r.language && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{r.language}</span>}
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              )}
+            <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 block">
+              Refresh interval
+            </label>
+            <div className="flex gap-2 flex-wrap">
+              {POLL_OPTIONS.map(o => (
+                <button
+                  key={o.value}
+                  onClick={() => setSelectedPoll(o.value)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-md text-sm font-semibold border transition-colors",
+                    selectedPoll === o.value
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-input bg-background text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">Data is automatically re-fetched on this interval.</p>
           </div>
 
           {/* Linear */}
@@ -201,9 +198,12 @@ export function SettingsDialog({
 
         <DialogFooter className="p-6 pt-4 border-t">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button
-            onClick={() => onSave(selectedRepo, selectedPeriod, linConnected ? linToken : "", linConnected ? linTeamId : "")}
-            disabled={!selectedRepo}>
+          <Button onClick={() => onSave({
+            theme:        selectedTheme,
+            pollInterval: selectedPoll,
+            linearToken:  linConnected ? linToken : "",
+            linearTeam:   linConnected ? linTeamId : "",
+          })}>
             Save changes
           </Button>
         </DialogFooter>

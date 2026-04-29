@@ -42,7 +42,7 @@ export async function ghAll(url, token) {
   return all
 }
 
-// Fetch closed PRs sorted by updated desc, stop once the oldest item on the page
+// Fetch closed PRs sorted by updated desc; stop once the oldest item on the page
 // predates `since` (safe because updated_at >= merged_at always), then filter to
 // only PRs actually merged within the window.
 export async function ghAllMergedSince(baseUrl, token, since) {
@@ -61,29 +61,55 @@ export async function ghAllMergedSince(baseUrl, token, since) {
   return all.filter(p => p.merged_at && new Date(p.merged_at) >= sinceDate)
 }
 
-export const SAFE_THRESHOLD = 1200
-
-export async function preflight(owner, repo, token, since) {
-  const { data } = await ghFetch(
-    `https://api.github.com/repos/${owner}/${repo}/pulls?state=closed&per_page=100&sort=updated&direction=desc`,
-    token
-  )
-  if (!data) return { estimated: 0, mergedEstimate: "0", isLikelyMore: false }
-  const sinceDate    = since ? new Date(since) : new Date(0)
-  const merged       = data.filter(p => p.merged_at && new Date(p.merged_at) >= sinceDate).length
-  const isLikelyMore = data.length === 100
-  return { estimated: 2 + Math.ceil(merged / 100), mergedEstimate: isLikelyMore ? `${merged}+` : `${merged}`, isLikelyMore }
-}
-
-export async function loadDashboard(owner, repo, token, since, onProgress) {
+// Fetch data for multiple repos, covering both the current and previous period in
+// a single API pass per repo. Returns merged arrays with _repo/_owner/_repoName tags.
+export async function loadMultiRepoDashboard(repos, token, sinceISO, prevSinceISO, onProgress) {
   const base = "https://api.github.com"
+  const total = repos.length
+  let done = 0
 
-  onProgress("Fetching PRs…", 10)
-  const [mergedPRs, openPRs] = await Promise.all([
-    ghAllMergedSince(`${base}/repos/${owner}/${repo}/pulls?state=closed&per_page=100&sort=updated&direction=desc`, token, since),
-    ghAll(`${base}/repos/${owner}/${repo}/pulls?state=open&per_page=100&sort=updated&direction=desc`, token),
-  ])
+  const sinceDate    = new Date(sinceISO)
+  const prevSinceDate = new Date(prevSinceISO)
 
-  onProgress("Processing data…", 90)
-  return { mergedPRs, openPRs }
+  const tag = (pr, repoSlug, owner, repoName) => ({
+    ...pr,
+    _repo: repoSlug,
+    _owner: owner,
+    _repoName: repoName,
+  })
+
+  const results = await Promise.all(repos.map(async (repoSlug) => {
+    const [owner, repoName] = repoSlug.split("/")
+
+    // One pass back to prevSince covers both current and previous period
+    const [allMerged, openPRs] = await Promise.all([
+      ghAllMergedSince(
+        `${base}/repos/${owner}/${repoName}/pulls?state=closed&per_page=100&sort=updated&direction=desc`,
+        token,
+        prevSinceISO
+      ),
+      ghAll(
+        `${base}/repos/${owner}/${repoName}/pulls?state=open&per_page=100&sort=updated&direction=desc`,
+        token
+      ),
+    ])
+
+    const mergedPRs     = allMerged.filter(p => new Date(p.merged_at) >= sinceDate)
+                                   .map(p => tag(p, repoSlug, owner, repoName))
+    const prevMergedPRs = allMerged.filter(p =>
+      new Date(p.merged_at) >= prevSinceDate && new Date(p.merged_at) < sinceDate
+    ).map(p => tag(p, repoSlug, owner, repoName))
+    const openPRsTagged = openPRs.map(p => tag(p, repoSlug, owner, repoName))
+
+    done++
+    onProgress(`Fetching repos… (${done}/${total})`, Math.round((done / total) * 90))
+
+    return { mergedPRs, prevMergedPRs, openPRs: openPRsTagged }
+  }))
+
+  return {
+    mergedPRs:     results.flatMap(r => r.mergedPRs),
+    prevMergedPRs: results.flatMap(r => r.prevMergedPRs),
+    openPRs:       results.flatMap(r => r.openPRs),
+  }
 }
