@@ -11,13 +11,17 @@ import { DashboardPage } from "@/pages/DashboardPage"
 import { useTheme } from "@/hooks/useTheme"
 import { ghAll, preflight, loadDashboard, setRateLimitCallback, SAFE_THRESHOLD } from "@/lib/github"
 import { processData } from "@/lib/process"
+import { loadLinearData } from "@/lib/linear"
+import { processLinearData } from "@/lib/processLinear"
 import { fmtH } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
-const LS_TOKEN  = "paceboard_gh_token"
-const LS_REPO   = "paceboard_gh_repo"
-const LS_PERIOD = "paceboard_gh_period"
-const PERIODS   = [{ label:"14d",days:14},{label:"30d",days:30},{label:"60d",days:60},{label:"90d",days:90},{label:"6mo",days:180}]
+const LS_TOKEN        = "paceboard_gh_token"
+const LS_REPO         = "paceboard_gh_repo"
+const LS_PERIOD       = "paceboard_gh_period"
+const LS_LINEAR_TOKEN = "paceboard_linear_token"
+const LS_LINEAR_TEAM  = "paceboard_linear_team"
+const PERIODS = [{ label:"14d",days:14},{label:"30d",days:30},{label:"60d",days:60},{label:"90d",days:90},{label:"6mo",days:180}]
 
 const ENV_TOKEN = import.meta.env.VITE_GITHUB_TOKEN || ""
 
@@ -32,38 +36,34 @@ function initStep() {
 export default function App() {
   const { theme, toggle } = useTheme()
 
-  // ── setup state ───────────────────────────────────────────────────────────
-  const [step,    setStep]    = useState(initStep)
-  const [repos,   setRepos]   = useState([])
+  const [step,  setStep]  = useState(initStep)
+  const [repos, setRepos] = useState([])
 
-  // ── persisted prefs ───────────────────────────────────────────────────────
-  const [token,  setToken]  = useState(() => ENV_TOKEN || localStorage.getItem(LS_TOKEN)  || "")
-  const [repo,   setRepo]   = useState(() => localStorage.getItem(LS_REPO)   || "")
-  const [period, setPeriod] = useState(() => parseInt(localStorage.getItem(LS_PERIOD) || "30"))
+  const [token,       setToken]       = useState(() => ENV_TOKEN || localStorage.getItem(LS_TOKEN)        || "")
+  const [repo,        setRepo]        = useState(() => localStorage.getItem(LS_REPO)                      || "")
+  const [period,      setPeriod]      = useState(() => parseInt(localStorage.getItem(LS_PERIOD)  || "30"))
+  const [linearToken, setLinearToken] = useState(() => localStorage.getItem(LS_LINEAR_TOKEN)              || "")
+  const [linearTeam,  setLinearTeam]  = useState(() => localStorage.getItem(LS_LINEAR_TEAM)               || "")
 
-  // ── dashboard state ───────────────────────────────────────────────────────
-  const [loading,   setLoading]   = useState(false)
-  const [progress,  setProgress]  = useState({ pct: 0, label: "" })
-  const [error,     setError]     = useState(null)
-  const [warning,   setWarning]   = useState(null)
-  const [result,    setResult]    = useState(null)
-  const [rateLimit, setRateLimit] = useState(null)
+  const [loading,      setLoading]      = useState(false)
+  const [progress,     setProgress]     = useState({ pct: 0, label: "" })
+  const [error,        setError]        = useState(null)
+  const [warning,      setWarning]      = useState(null)
+  const [result,       setResult]       = useState(null)
+  const [linearResult, setLinearResult] = useState(null)
+  const [rateLimit,    setRateLimit]    = useState(null)
 
-  // ── modal state ───────────────────────────────────────────────────────────
   const [showSettings,   setShowSettings]   = useState(false)
   const [showDisconnect, setShowDisconnect] = useState(false)
   const [lastFetch,      setLastFetch]      = useState(null)
 
-  // wire rate limit callback
   useEffect(() => { setRateLimitCallback(setRateLimit) }, [])
 
-  // auto re-fetch when period changes if we already have data loaded
   const hadResult = useRef(false)
   useEffect(() => { if (result) hadResult.current = true }, [result])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (hadResult.current) run() }, [period])
 
-  // if arriving at "repos" step with a token but no repos list, fetch repos
   useEffect(() => {
     if (step === "repos" && token && repos.length === 0) {
       ghAll("https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member", token)
@@ -72,7 +72,6 @@ export default function App() {
     }
   }, [step, token])
 
-  // ── setup handlers ────────────────────────────────────────────────────────
   function onTokenDone(tok, repoList) {
     localStorage.setItem(LS_TOKEN, tok)
     setToken(tok); setRepos(repoList); setStep("repos")
@@ -83,34 +82,57 @@ export default function App() {
     setRepo(fullName); setStep("ready")
   }
 
-  function onSettingsSave(newRepo, newPeriod) {
+  function onSettingsSave(newRepo, newPeriod, newLinearToken, newLinearTeam) {
     if (newRepo !== repo) {
       localStorage.setItem(LS_REPO, newRepo)
-      setRepo(newRepo); setResult(null); setError(null); setWarning(null)
+      setRepo(newRepo); setResult(null); setLinearResult(null); setError(null); setWarning(null)
     }
     if (newPeriod !== period) {
       localStorage.setItem(LS_PERIOD, newPeriod)
       setPeriod(newPeriod)
     }
+    if (newLinearToken !== linearToken) {
+      localStorage.setItem(LS_LINEAR_TOKEN, newLinearToken)
+      setLinearToken(newLinearToken)
+    }
+    if (newLinearTeam !== linearTeam) {
+      localStorage.setItem(LS_LINEAR_TEAM, newLinearTeam)
+      setLinearTeam(newLinearTeam)
+    }
+    if (!newLinearToken) {
+      localStorage.removeItem(LS_LINEAR_TOKEN)
+      localStorage.removeItem(LS_LINEAR_TEAM)
+      setLinearResult(null)
+    }
     setShowSettings(false)
   }
 
   function onDisconnect() {
-    [LS_TOKEN, LS_REPO, LS_PERIOD].forEach(k => localStorage.removeItem(k))
-    setToken(""); setRepo(""); setRepos([]); setResult(null)
+    [LS_TOKEN, LS_REPO, LS_PERIOD, LS_LINEAR_TOKEN, LS_LINEAR_TEAM].forEach(k => localStorage.removeItem(k))
+    setToken(""); setRepo(""); setRepos([]); setResult(null); setLinearResult(null)
     setError(null); setWarning(null); setShowDisconnect(false); setStep("token")
   }
 
-  // ── fetch ─────────────────────────────────────────────────────────────────
   const doFetch = useCallback(async (owner, repoName, since) => {
-    setWarning(null); setLoading(true); setError(null); setResult(null)
+    setWarning(null); setLoading(true); setError(null); setResult(null); setLinearResult(null)
     try {
       const raw = await loadDashboard(owner, repoName, token, since, (label, pct) => setProgress({ label, pct }))
       setResult({ ...processData(raw), owner, repo: repoName, period })
+
+      if (linearToken && linearTeam) {
+        setProgress({ pct: 100, label: "Fetching Linear data…" })
+        try {
+          const linRaw = await loadLinearData(linearToken, linearTeam, since)
+          setLinearResult(processLinearData(linRaw))
+        } catch (e) {
+          console.warn("Linear fetch failed:", e.message)
+        }
+      }
+
       setLastFetch(new Date())
     } catch (e) { setError(e.message) }
     finally { setLoading(false) }
-  }, [token, period])
+  }, [token, period, linearToken, linearTeam])
 
   const run = useCallback(async () => {
     const [owner, repoName] = repo.split("/")
@@ -137,15 +159,12 @@ export default function App() {
     } catch (e) { setLoading(false); setError(e.message) }
   }, [token, repo, period, doFetch, rateLimit])
 
-  // ── setup screens ─────────────────────────────────────────────────────────
   if (step === "token") return <TokenPage onDone={onTokenDone} />
   if (step === "repos") return <RepoPage repos={repos} onSelect={onRepoSelect} onBack={() => setStep("token")} />
 
-  // ── dashboard ─────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
 
-      {/* Header */}
       <header className="border-b px-6 py-3 flex items-center gap-4 flex-shrink-0">
         <div className="flex items-center gap-2.5">
           <span className="text-lg font-extrabold tracking-tight">◈ Paceboard</span>
@@ -154,7 +173,6 @@ export default function App() {
 
         <Separator orientation="vertical" className="h-5 mx-1" />
 
-        {/* Period selector */}
         <div className="flex items-center gap-1 rounded-md bg-muted p-0.5">
           {PERIODS.map(p => (
             <button key={p.label} onClick={() => { setPeriod(p.days); localStorage.setItem(LS_PERIOD, p.days) }}
@@ -173,6 +191,11 @@ export default function App() {
 
         <div className="ml-auto flex items-center gap-2">
           {rateLimit && <RateLimitBadge rl={rateLimit} />}
+          {linearToken && (
+            <Badge variant="outline" className="text-[10px] font-mono text-violet-500 border-violet-500/40">
+              Linear
+            </Badge>
+          )}
           <span className="text-xs text-muted-foreground font-mono hidden sm:block truncate max-w-[180px]">{repo}</span>
           <Separator orientation="vertical" className="h-5" />
           <Button variant="ghost" size="icon" onClick={toggle} title="Toggle theme">
@@ -190,14 +213,12 @@ export default function App() {
         </div>
       </header>
 
-      {/* Error banner */}
       {error && (
         <div className="mx-6 mt-4 px-4 py-3 rounded-lg border border-destructive/40 bg-destructive/10 text-destructive text-sm">
           <strong>Error:</strong> {error}
         </div>
       )}
 
-      {/* Warning banner */}
       {warning && !loading && (
         <div className="mx-6 mt-4 px-4 py-4 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400">
           <div className="flex gap-3">
@@ -221,7 +242,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Loading */}
       {loading && (
         <div className="flex flex-col items-center justify-center flex-1 gap-4 py-24">
           <div className="text-4xl animate-spin">◈</div>
@@ -235,7 +255,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Empty state */}
       {!result && !loading && !warning && !error && (
         <div className="flex flex-col items-center justify-center flex-1 gap-3 py-24 text-center">
           <div className="text-5xl text-muted-foreground/20">◈</div>
@@ -247,16 +266,14 @@ export default function App() {
         </div>
       )}
 
-      {/* Dashboard */}
-      {result && !loading && <DashboardPage result={result} />}
+      {result && !loading && <DashboardPage result={result} linear={linearResult} />}
 
-      {/* Footer */}
       <footer className="border-t px-6 py-2 text-xs text-muted-foreground flex items-center gap-1.5 flex-shrink-0 mt-auto">
         <span className="font-semibold text-foreground/60">◈ Paceboard</span>
         <span>·</span>
         <span>
           {lastFetch
-            ? <>Last data fetch: <span className="font-medium text-foreground/80">{lastFetch.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})} at {lastFetch.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"})}</span></>
+            ? <>Last fetch: <span className="font-medium text-foreground/80">{lastFetch.toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})} at {lastFetch.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"})}</span></>
             : "No data fetched yet"}
         </span>
         <a href="https://pulldog.dev" target="_blank" rel="noreferrer"
@@ -265,13 +282,14 @@ export default function App() {
         </a>
       </footer>
 
-      {/* Modals */}
       <SettingsDialog
         open={showSettings}
         onClose={() => setShowSettings(false)}
         token={token}
         currentRepo={repo}
         currentPeriod={period}
+        currentLinearToken={linearToken}
+        currentLinearTeam={linearTeam}
         onSave={onSettingsSave}
       />
       <DisconnectDialog
