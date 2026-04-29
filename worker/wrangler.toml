@@ -1,0 +1,8 @@
+name = "paceboard-auth"
+main = "index.js"
+compatibility_date = "2025-04-20"
+
+[vars]
+# GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET are set via:
+# wrangler secret put GITHUB_CLIENT_ID
+# wrangler secret put GITHUB_CLIENT_SECRET
