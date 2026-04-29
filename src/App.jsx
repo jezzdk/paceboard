@@ -9,6 +9,7 @@ import { DisconnectDialog } from "@/components/DisconnectDialog"
 import { TokenPage, RepoPage } from "@/pages/SetupPage"
 import { DashboardPage } from "@/pages/DashboardPage"
 import { useTheme } from "@/hooks/useTheme"
+import { useGithubOAuth } from "@/hooks/useGithubOAuth"
 import { ghAll, preflight, loadDashboard, setRateLimitCallback, SAFE_THRESHOLD } from "@/lib/github"
 import { processData } from "@/lib/process"
 import { fmtH } from "@/lib/format"
@@ -31,10 +32,15 @@ function initStep() {
 
 export default function App() {
   const { theme, toggle } = useTheme()
+  const oauth = useGithubOAuth()
 
   // ── setup state ───────────────────────────────────────────────────────────
-  const [step,    setStep]    = useState(initStep)
-  const [repos,   setRepos]   = useState([])
+  const [step,        setStep]        = useState(initStep)
+  const [repos,       setRepos]       = useState([])
+  const [oauthStatus, setOauthStatus] = useState(
+    () => new URLSearchParams(window.location.search).has("code") ? "exchanging" : "idle"
+  )
+  const [oauthError,  setOauthError]  = useState(null)
 
   // ── persisted prefs ───────────────────────────────────────────────────────
   const [token,  setToken]  = useState(() => ENV_TOKEN || localStorage.getItem(LS_TOKEN)  || "")
@@ -62,6 +68,24 @@ export default function App() {
   useEffect(() => { if (result) hadResult.current = true }, [result])
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (hadResult.current) run() }, [period])
+
+  // handle OAuth callback — runs once on mount when ?code= is in the URL
+  useEffect(() => {
+    if (oauthStatus !== "exchanging") return
+    oauth.handleCallback().then(result => {
+      if (!result) { setOauthStatus("idle"); return }
+      if (result.error) { setOauthStatus("error"); setOauthError(result.error); return }
+      // Exchange succeeded — treat same as a PAT token being entered
+      const tok = result.token
+      localStorage.setItem(LS_TOKEN, tok)
+      setToken(tok)
+      setOauthStatus("idle")
+      ghAll("https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member", tok)
+        .then(r => { setRepos(r.sort((a, b) => a.full_name.localeCompare(b.full_name))); setStep("repos") })
+        .catch(() => { setOauthStatus("error"); setOauthError("Could not load repositories — please try again.") })
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // if arriving at "repos" step with a token but no repos list, fetch repos
   useEffect(() => {
@@ -96,9 +120,11 @@ export default function App() {
   }
 
   function onDisconnect() {
-    [LS_TOKEN, LS_REPO, LS_PERIOD].forEach(k => localStorage.removeItem(k))
+    oauth.revokeToken(token)
+    ;[LS_TOKEN, LS_REPO, LS_PERIOD].forEach(k => localStorage.removeItem(k))
     setToken(""); setRepo(""); setRepos([]); setResult(null)
-    setError(null); setWarning(null); setShowDisconnect(false); setStep("token")
+    setError(null); setWarning(null); setOauthStatus("idle"); setOauthError(null)
+    setShowDisconnect(false); setStep("token")
   }
 
   // ── fetch ─────────────────────────────────────────────────────────────────
@@ -138,7 +164,14 @@ export default function App() {
   }, [token, repo, period, doFetch, rateLimit])
 
   // ── setup screens ─────────────────────────────────────────────────────────
-  if (step === "token") return <TokenPage onDone={onTokenDone} />
+  if (step === "token") return (
+    <TokenPage
+      onDone={onTokenDone}
+      oauthStatus={oauthStatus}
+      oauthError={oauthError}
+      onConnectWithGithub={oauth.startRedirect}
+    />
+  )
   if (step === "repos") return <RepoPage repos={repos} onSelect={onRepoSelect} onBack={() => setStep("token")} />
 
   // ── dashboard ─────────────────────────────────────────────────────────────
