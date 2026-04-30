@@ -1,44 +1,57 @@
-import { useMemo } from "react"
+import { useMemo } from "react";
 import {
-  BarChart, Bar,
-  ComposedChart, Line,
-  XAxis, YAxis,
+  BarChart,
+  Bar,
+  ComposedChart,
+  Line,
+  XAxis,
+  YAxis,
   CartesianGrid,
-} from "recharts"
+} from "recharts";
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-} from "@/components/ui/chart"
-import { fmtDate } from "@/lib/format"
+} from "@/components/ui/chart";
+import { fmtDate } from "@/lib/format";
 
 // ── Throughput chart ──────────────────────────────────────────────────────────
 // dailyData: [{ date, prs, issues? }] — last ~30 days, one row per day
 
-const PR_COLOR     = "hsl(var(--chart-1))"
-const ISSUES_COLOR = "hsl(var(--chart-2))"
+const PR_COLOR = "hsl(var(--chart-1))";
+const ISSUES_COLOR = "hsl(var(--chart-2))";
 
 const throughputConfig = {
-  prs:    { label: "PRs merged",    color: PR_COLOR     },
+  prs: { label: "PRs merged", color: PR_COLOR },
   issues: { label: "Issues closed", color: ISSUES_COLOR },
-}
+};
 
 export function ThroughputChart({ dailyData, hasLinear }) {
-  const data = useMemo(() => dailyData, [dailyData])
-  const interval = data.length > 20 ? Math.ceil(data.length / 8) - 1 : 0
+  const data = useMemo(() => dailyData, [dailyData]);
+  const interval = data.length > 20 ? Math.ceil(data.length / 8) - 1 : 0;
 
   return (
     <div>
       <div className="flex min-h-[22px] items-center justify-end mb-2 gap-4">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: PR_COLOR }} />
-            <span className="text-[11px] text-muted-foreground">PRs merged</span>
+            <span
+              className="h-2 w-2 rounded-sm"
+              style={{ backgroundColor: PR_COLOR }}
+            />
+            <span className="text-[11px] text-muted-foreground">
+              PRs merged
+            </span>
           </div>
           {hasLinear && (
             <div className="flex items-center gap-1.5">
-              <span className="h-0.5 w-3 rounded-sm" style={{ backgroundColor: ISSUES_COLOR }} />
-              <span className="text-[11px] text-muted-foreground">Issues closed</span>
+              <span
+                className="h-0.5 w-3 rounded-sm"
+                style={{ backgroundColor: ISSUES_COLOR }}
+              />
+              <span className="text-[11px] text-muted-foreground">
+                Issues closed
+              </span>
             </div>
           )}
         </div>
@@ -46,7 +59,11 @@ export function ThroughputChart({ dailyData, hasLinear }) {
 
       <ChartContainer config={throughputConfig} className="h-52">
         <ComposedChart data={data} barGap={2} barCategoryGap="18%">
-          <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
+          <CartesianGrid
+            vertical={false}
+            strokeDasharray="3 3"
+            stroke="hsl(var(--border))"
+          />
           <XAxis
             dataKey="date"
             tickLine={false}
@@ -61,7 +78,12 @@ export function ThroughputChart({ dailyData, hasLinear }) {
             cursor={{ fill: "hsl(var(--muted))", opacity: 0.5 }}
             content={<ChartTooltipContent labelFormatter={fmtDate} />}
           />
-          <Bar dataKey="prs" fill="var(--color-prs)" radius={[3, 3, 0, 0]} maxBarSize={28} />
+          <Bar
+            dataKey="prs"
+            fill="var(--color-prs)"
+            radius={[3, 3, 0, 0]}
+            maxBarSize={28}
+          />
           {hasLinear && (
             <Line
               type="monotone"
@@ -75,7 +97,7 @@ export function ThroughputChart({ dailyData, hasLinear }) {
         </ComposedChart>
       </ChartContainer>
     </div>
-  )
+  );
 }
 
 // ── Lead time distribution chart ──────────────────────────────────────────────
@@ -83,7 +105,7 @@ export function ThroughputChart({ dailyData, hasLinear }) {
 
 const leadTimeConfig = {
   count: { label: "Merged PRs", color: PR_COLOR },
-}
+};
 
 export function LeadTimeChart({ data }) {
   return (
@@ -91,15 +113,24 @@ export function LeadTimeChart({ data }) {
       <div className="flex min-h-[22px] items-center justify-end mb-2 gap-4">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: PR_COLOR }} />
-            <span className="text-[11px] text-muted-foreground">Merged PRs</span>
+            <span
+              className="h-2 w-2 rounded-sm"
+              style={{ backgroundColor: PR_COLOR }}
+            />
+            <span className="text-[11px] text-muted-foreground">
+              Merged PRs
+            </span>
           </div>
         </div>
       </div>
 
       <ChartContainer config={leadTimeConfig} className="h-52">
         <BarChart data={data} barCategoryGap="20%">
-          <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
+          <CartesianGrid
+            vertical={false}
+            strokeDasharray="3 3"
+            stroke="hsl(var(--border))"
+          />
           <XAxis
             dataKey="label"
             tickLine={false}
@@ -112,9 +143,14 @@ export function LeadTimeChart({ data }) {
             cursor={{ fill: "hsl(var(--muted))", opacity: 0.5 }}
             content={<ChartTooltipContent hideLabel />}
           />
-          <Bar dataKey="count" fill="var(--color-count)" radius={[3, 3, 0, 0]} maxBarSize={48} />
+          <Bar
+            dataKey="count"
+            fill="var(--color-count)"
+            radius={[3, 3, 0, 0]}
+            maxBarSize={48}
+          />
         </BarChart>
       </ChartContainer>
     </div>
-  )
+  );
 }

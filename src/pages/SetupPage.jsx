@@ -1,40 +1,58 @@
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
-import { ghAll } from "@/lib/github"
-import { cn } from "@/lib/utils"
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { ghAll } from "@/lib/github";
+import { cn } from "@/lib/utils";
 
-const CLIENT_ID = import.meta.env.VITE_GITHUB_CLIENT_ID || ""
+const CLIENT_ID = import.meta.env.VITE_GITHUB_CLIENT_ID || "";
 
-export function TokenPage({ onDone, oauthStatus, oauthError, onConnectWithGithub }) {
-  const [val,       setVal]       = useState("")
-  const [loading,   setLoading]   = useState(false)
-  const [error,     setError]     = useState(null)
-  const [showPat,   setShowPat]   = useState(!CLIENT_ID)
-  const [showGuide, setShowGuide] = useState(false)
+export function TokenPage({
+  onDone,
+  oauthStatus,
+  oauthError,
+  onConnectWithGithub,
+}) {
+  const [val, setVal] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [showPat, setShowPat] = useState(!CLIENT_ID);
+  const [showGuide, setShowGuide] = useState(false);
 
-  const isExchanging  = oauthStatus === "exchanging"
-  const hasOauthError = oauthStatus === "error"
+  const isExchanging = oauthStatus === "exchanging";
+  const hasOauthError = oauthStatus === "error";
 
   async function connectWithPat() {
-    setLoading(true); setError(null)
+    setLoading(true);
+    setError(null);
     try {
       const repos = await ghAll(
         "https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member",
-        val
-      )
-      if (!repos.length) throw new Error("No repositories found for this token.")
-      onDone(val, repos.sort((a, b) => a.full_name.localeCompare(b.full_name)))
+        val,
+      );
+      if (!repos.length)
+        throw new Error("No repositories found for this token.");
+      onDone(
+        val,
+        repos.sort((a, b) => a.full_name.localeCompare(b.full_name)),
+      );
     } catch (e) {
-      setError(e.message.includes("401") ? "Invalid token — check your PAT and try again." : e.message)
-    } finally { setLoading(false) }
+      setError(
+        e.message.includes("401")
+          ? "Invalid token — check your PAT and try again."
+          : e.message,
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
       <div className="mb-8 text-center">
-        <div className="text-3xl font-extrabold tracking-tight mb-1">◈ Paceboard</div>
+        <div className="text-3xl font-extrabold tracking-tight mb-1">
+          ◈ Paceboard
+        </div>
         <div className="text-sm text-muted-foreground">Developer Analytics</div>
       </div>
       <Card className="w-full max-w-md">
@@ -47,7 +65,11 @@ export function TokenPage({ onDone, oauthStatus, oauthError, onConnectWithGithub
         <CardContent className="space-y-4">
           {!CLIENT_ID && (
             <p className="text-xs text-muted-foreground">
-              OAuth button is hidden because <code className="bg-muted px-1 rounded font-mono">VITE_GITHUB_CLIENT_ID</code> is not set.
+              OAuth button is hidden because{" "}
+              <code className="bg-muted px-1 rounded font-mono">
+                VITE_GITHUB_CLIENT_ID
+              </code>{" "}
+              is not set.
             </p>
           )}
 
@@ -65,7 +87,9 @@ export function TokenPage({ onDone, oauthStatus, oauthError, onConnectWithGithub
                 </Button>
               )}
               {hasOauthError && (
-                <p className="text-sm text-destructive text-center">{oauthError}</p>
+                <p className="text-sm text-destructive text-center">
+                  {oauthError}
+                </p>
               )}
             </div>
           )}
@@ -77,9 +101,12 @@ export function TokenPage({ onDone, oauthStatus, oauthError, onConnectWithGithub
               </div>
               <div className="relative flex justify-center text-xs">
                 <button
-                  onClick={() => setShowPat(v => !v)}
-                  className="bg-background px-2 text-muted-foreground hover:text-foreground transition-colors">
-                  {showPat ? "Hide manual token entry ▲" : "Or enter a personal access token ▼"}
+                  onClick={() => setShowPat((v) => !v)}
+                  className="bg-background px-2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showPat
+                    ? "Hide manual token entry ▲"
+                    : "Or enter a personal access token ▼"}
                 </button>
               </div>
             </div>
@@ -88,43 +115,89 @@ export function TokenPage({ onDone, oauthStatus, oauthError, onConnectWithGithub
           {/* PAT */}
           {showPat && (
             <div className="space-y-3">
-              <Input type="password" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-                value={val} onChange={e => setVal(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && val && connectWithPat()} autoFocus={!CLIENT_ID} />
+              <Input
+                type="password"
+                placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                value={val}
+                onChange={(e) => setVal(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && val && connectWithPat()}
+                autoFocus={!CLIENT_ID}
+              />
               {error && <p className="text-sm text-destructive">{error}</p>}
-              <Button className="w-full" onClick={connectWithPat} disabled={loading || !val}>
+              <Button
+                className="w-full"
+                onClick={connectWithPat}
+                disabled={loading || !val}
+              >
                 {loading ? "Connecting…" : "Connect →"}
               </Button>
-              <a href="https://github.com/settings/tokens/new?scopes=repo&description=Paceboard+Dev+Analytics"
-                target="_blank" rel="noreferrer"
-                className="block text-center text-xs text-primary hover:underline pt-1">
+              <a
+                href="https://github.com/settings/tokens/new?scopes=repo&description=Paceboard+Dev+Analytics"
+                target="_blank"
+                rel="noreferrer"
+                className="block text-center text-xs text-primary hover:underline pt-1"
+              >
                 Create a token on GitHub ↗
               </a>
 
               <div className="border rounded-lg overflow-hidden">
                 <button
-                  onClick={() => setShowGuide(v => !v)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-semibold text-muted-foreground hover:bg-muted/50 transition-colors text-left">
+                  onClick={() => setShowGuide((v) => !v)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-semibold text-muted-foreground hover:bg-muted/50 transition-colors text-left"
+                >
                   <span>How to get a token &amp; required permissions</span>
                   <span>{showGuide ? "▲" : "▼"}</span>
                 </button>
                 {showGuide && (
                   <div className="px-4 pb-4 pt-1 space-y-2 bg-muted/20 text-xs text-muted-foreground leading-relaxed">
                     <ol className="space-y-1.5 list-decimal list-inside">
-                      <li>Open <span className="font-medium text-foreground">GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)</span></li>
-                      <li>Click <span className="font-medium text-foreground">Generate new token (classic)</span></li>
-                      <li>Give it a name, e.g. <span className="font-mono bg-muted px-1 rounded">Paceboard</span></li>
+                      <li>
+                        Open{" "}
+                        <span className="font-medium text-foreground">
+                          GitHub → Settings → Developer settings → Personal
+                          access tokens → Tokens (classic)
+                        </span>
+                      </li>
+                      <li>
+                        Click{" "}
+                        <span className="font-medium text-foreground">
+                          Generate new token (classic)
+                        </span>
+                      </li>
+                      <li>
+                        Give it a name, e.g.{" "}
+                        <span className="font-mono bg-muted px-1 rounded">
+                          Paceboard
+                        </span>
+                      </li>
                       <li>
                         Select scopes:
                         <ul className="mt-1 ml-4 space-y-1 list-disc">
-                          <li><code className="bg-muted px-1 rounded font-mono">repo</code> — full repository access (required)</li>
-                          <li><code className="bg-muted px-1 rounded font-mono">read:org</code> — add this to include organisation repos</li>
+                          <li>
+                            <code className="bg-muted px-1 rounded font-mono">
+                              repo
+                            </code>{" "}
+                            — full repository access (required)
+                          </li>
+                          <li>
+                            <code className="bg-muted px-1 rounded font-mono">
+                              read:org
+                            </code>{" "}
+                            — add this to include organisation repos
+                          </li>
                         </ul>
                       </li>
-                      <li>Click <span className="font-medium text-foreground">Generate token</span> and copy it — it&apos;s only shown once</li>
+                      <li>
+                        Click{" "}
+                        <span className="font-medium text-foreground">
+                          Generate token
+                        </span>{" "}
+                        and copy it — it&apos;s only shown once
+                      </li>
                     </ol>
                     <p className="pt-1 border-t border-border/50">
-                      Tokens are stored in your browser&apos;s localStorage and never sent anywhere except directly to the GitHub API.
+                      Tokens are stored in your browser&apos;s localStorage and
+                      never sent anywhere except directly to the GitHub API.
                     </p>
                   </div>
                 )}
@@ -134,37 +207,39 @@ export function TokenPage({ onDone, oauthStatus, oauthError, onConnectWithGithub
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }
 
 // Multi-select repo picker used during initial setup
 export function RepoPage({ repos, onSelect, onBack }) {
-  const [search,   setSearch]   = useState("")
-  const [selected, setSelected] = useState(new Set())
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState(new Set());
 
-  const filtered = repos.filter(r =>
-    r.full_name.toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = repos.filter((r) =>
+    r.full_name.toLowerCase().includes(search.toLowerCase()),
+  );
 
   function toggle(fullName) {
-    setSelected(prev => {
-      const next = new Set(prev)
-      next.has(fullName) ? next.delete(fullName) : next.add(fullName)
-      return next
-    })
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(fullName) ? next.delete(fullName) : next.add(fullName);
+      return next;
+    });
   }
 
   function handleContinue() {
     const ordered = repos
-      .filter(r => selected.has(r.full_name))
-      .map(r => r.full_name)
-    onSelect(ordered)
+      .filter((r) => selected.has(r.full_name))
+      .map((r) => r.full_name);
+    onSelect(ordered);
   }
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
       <div className="mb-8 text-center">
-        <div className="text-3xl font-extrabold tracking-tight mb-1">◈ Paceboard</div>
+        <div className="text-3xl font-extrabold tracking-tight mb-1">
+          ◈ Paceboard
+        </div>
         <div className="text-sm text-muted-foreground">Developer Analytics</div>
       </div>
       <Card className="w-full max-w-lg">
@@ -175,16 +250,21 @@ export function RepoPage({ repos, onSelect, onBack }) {
           </p>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Input placeholder="Filter repos…" value={search} onChange={e => setSearch(e.target.value)} autoFocus />
+          <Input
+            placeholder="Filter repos…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            autoFocus
+          />
           <div className="border rounded-lg overflow-y-auto max-h-80">
-            {filtered.map(r => {
-              const checked = selected.has(r.full_name)
+            {filtered.map((r) => {
+              const checked = selected.has(r.full_name);
               return (
                 <label
                   key={r.full_name}
                   className={cn(
                     "flex items-center gap-3 px-4 py-3 border-b last:border-0 cursor-pointer transition-colors",
-                    checked ? "bg-accent" : "hover:bg-muted/50"
+                    checked ? "bg-accent" : "hover:bg-muted/50",
                   )}
                 >
                   <input
@@ -194,34 +274,55 @@ export function RepoPage({ repos, onSelect, onBack }) {
                     className="accent-primary flex-shrink-0"
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold truncate">{r.full_name}</div>
+                    <div className="text-sm font-semibold truncate">
+                      {r.full_name}
+                    </div>
                     {r.description && (
-                      <div className="text-xs text-muted-foreground truncate mt-0.5">{r.description}</div>
+                      <div className="text-xs text-muted-foreground truncate mt-0.5">
+                        {r.description}
+                      </div>
                     )}
                   </div>
                   <div className="flex gap-1.5 flex-shrink-0">
                     {r.private && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">private</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                        private
+                      </span>
                     )}
                     {r.language && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{r.language}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                        {r.language}
+                      </span>
                     )}
                   </div>
                 </label>
-              )
+              );
             })}
             {filtered.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-6">No repos match &ldquo;{search}&rdquo;</p>
+              <p className="text-sm text-muted-foreground text-center py-6">
+                No repos match &ldquo;{search}&rdquo;
+              </p>
             )}
           </div>
           <div className="flex gap-2">
-            <Button variant="ghost" size="sm" onClick={onBack} className="text-muted-foreground">← Back</Button>
-            <Button className="ml-auto" onClick={handleContinue} disabled={selected.size === 0}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onBack}
+              className="text-muted-foreground"
+            >
+              ← Back
+            </Button>
+            <Button
+              className="ml-auto"
+              onClick={handleContinue}
+              disabled={selected.size === 0}
+            >
               Continue {selected.size > 0 ? `(${selected.size})` : ""}
             </Button>
           </div>
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

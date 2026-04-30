@@ -1,40 +1,40 @@
-const LINEAR_API = "https://api.linear.app/graphql"
+const LINEAR_API = "https://api.linear.app/graphql";
 
 async function gql(query, variables = {}, token) {
   const res = await fetch(LINEAR_API, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": token },
+    headers: { "Content-Type": "application/json", Authorization: token },
     body: JSON.stringify({ query, variables }),
-  })
-  if (!res.ok) throw new Error(`Linear API ${res.status}: ${await res.text()}`)
-  const json = await res.json()
-  if (json.errors?.length) throw new Error(json.errors[0].message)
-  return json.data
+  });
+  if (!res.ok) throw new Error(`Linear API ${res.status}: ${await res.text()}`);
+  const json = await res.json();
+  if (json.errors?.length) throw new Error(json.errors[0].message);
+  return json.data;
 }
 
 async function paginate(query, variables, token, getPage) {
-  const items = []
-  let after = null
-  let page = 0
+  const items = [];
+  let after = null;
+  let page = 0;
   do {
-    const data = await gql(query, { ...variables, after }, token)
-    const result = getPage(data)
-    items.push(...result.nodes)
-    after = result.pageInfo.hasNextPage ? result.pageInfo.endCursor : null
-    page++
-    if (page > 20) break
-  } while (after)
-  return items
+    const data = await gql(query, { ...variables, after }, token);
+    const result = getPage(data);
+    items.push(...result.nodes);
+    after = result.pageInfo.hasNextPage ? result.pageInfo.endCursor : null;
+    page++;
+    if (page > 20) break;
+  } while (after);
+  return items;
 }
 
 export async function verifyLinearToken(token) {
-  const data = await gql(`{ viewer { id name email } }`, {}, token)
-  return data.viewer
+  const data = await gql(`{ viewer { id name email } }`, {}, token);
+  return data.viewer;
 }
 
 export async function getLinearTeams(token) {
-  const data = await gql(`{ teams { nodes { id name key } } }`, {}, token)
-  return data.teams.nodes
+  const data = await gql(`{ teams { nodes { id name key } } }`, {}, token);
+  return data.teams.nodes;
 }
 
 const COMPLETED_QUERY = `
@@ -56,7 +56,7 @@ const COMPLETED_QUERY = `
       }
     }
   }
-`
+`;
 
 const IN_PROGRESS_QUERY = `
   query($teamId: ID!, $after: String) {
@@ -77,7 +77,7 @@ const IN_PROGRESS_QUERY = `
       }
     }
   }
-`
+`;
 
 /** Open issues: blocked label or blocked-like state name (any workflow column). */
 const BLOCKED_OPEN_QUERY = `
@@ -103,13 +103,13 @@ const BLOCKED_OPEN_QUERY = `
       }
     }
   }
-`
+`;
 
 export async function loadLinearData(token, teamId, since) {
   const [completed, inProgress, blockedOpen] = await Promise.all([
-    paginate(COMPLETED_QUERY, { teamId, since }, token, d => d.issues),
-    paginate(IN_PROGRESS_QUERY, { teamId }, token, d => d.issues),
-    paginate(BLOCKED_OPEN_QUERY, { teamId }, token, d => d.issues),
-  ])
-  return { completed, inProgress, blockedOpen }
+    paginate(COMPLETED_QUERY, { teamId, since }, token, (d) => d.issues),
+    paginate(IN_PROGRESS_QUERY, { teamId }, token, (d) => d.issues),
+    paginate(BLOCKED_OPEN_QUERY, { teamId }, token, (d) => d.issues),
+  ]);
+  return { completed, inProgress, blockedOpen };
 }
