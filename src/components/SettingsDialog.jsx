@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { verifyLinearToken, getLinearTeams } from "@/lib/linear"
 
+const LINEAR_CLIENT_ID = import.meta.env.VITE_LINEAR_CLIENT_ID || ""
+
 const POLL_OPTIONS = [
   { label: "30s", value: 0.5 },
   { label: "1m",  value: 1   },
@@ -28,6 +30,7 @@ export function SettingsDialog({
   currentLinearToken,
   currentLinearTeam,
   onSave,
+  onConnectWithLinear,
 }) {
   const [selectedTheme,    setSelectedTheme]    = useState(currentTheme)
   const [selectedPoll,     setSelectedPoll]     = useState(currentPollInterval)
@@ -138,11 +141,7 @@ export function SettingsDialog({
           {/* Linear */}
           <div>
             <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1 block">Linear</label>
-            <p className="text-xs text-muted-foreground mb-3">
-              Optional. Generate a personal API key at{" "}
-              <a href="https://linear.app/settings/api" target="_blank" rel="noreferrer"
-                className="underline hover:text-foreground">linear.app/settings/api</a>.
-            </p>
+            <p className="text-xs text-muted-foreground mb-3">Optional. Connect to display cycle time and WIP metrics.</p>
 
             {linConnected ? (
               <div className="space-y-3">
@@ -175,21 +174,47 @@ export function SettingsDialog({
                 )}
               </div>
             ) : (
-              <div className="space-y-2">
-                <div className="flex gap-2">
-                  <Input
-                    type="password"
-                    placeholder="lin_api_…"
-                    value={linToken}
-                    onChange={e => setLinToken(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && connectLinear()}
-                    className="font-mono text-xs"
-                  />
-                  <Button size="sm" onClick={connectLinear} disabled={linVerifying || !linToken.trim()}>
-                    {linVerifying ? "…" : "Connect"}
-                  </Button>
+              <div className="space-y-3">
+                {/* OAuth button */}
+                {LINEAR_CLIENT_ID && (
+                  <>
+                    <Button className="w-full gap-2" variant="outline" onClick={onConnectWithLinear}>
+                      Connect with Linear
+                    </Button>
+                    <div className="relative">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t" />
+                      </div>
+                      <div className="relative flex justify-center text-xs">
+                        <span className="bg-background px-2 text-muted-foreground">or enter an API key manually</span>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Manual token entry */}
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <Input
+                      type="password"
+                      placeholder="lin_api_…"
+                      value={linToken}
+                      onChange={e => setLinToken(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && connectLinear()}
+                      className="font-mono text-xs"
+                    />
+                    <Button size="sm" onClick={connectLinear} disabled={linVerifying || !linToken.trim()}>
+                      {linVerifying ? "…" : "Connect"}
+                    </Button>
+                  </div>
+                  {!LINEAR_CLIENT_ID && (
+                    <a href="https://linear.app/settings/api" target="_blank" rel="noreferrer"
+                      className="block text-xs text-primary hover:underline">
+                      Generate an API key at linear.app/settings/api ↗
+                    </a>
+                  )}
+                  {linError && <p className="text-xs text-destructive">{linError}</p>}
                 </div>
-                {linError && <p className="text-xs text-destructive">{linError}</p>}
               </div>
             )}
           </div>

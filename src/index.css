@@ -24,6 +24,11 @@
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
     --radius: 0.5rem;
+    --chart-1: 199 89% 48%;
+    --chart-2: 262 63% 58%;
+    --chart-3: 160 84% 39%;
+    --chart-4: 38 92% 50%;
+    --chart-5: 0 84% 60%;
   }
 
   .dark {
@@ -44,6 +49,11 @@
     --accent-foreground: 213 31% 91%;
     --destructive: 0 63% 55%;
     --destructive-foreground: 0 0% 100%;
+    --chart-1: 199 89% 55%;
+    --chart-2: 262 63% 68%;
+    --chart-3: 160 84% 48%;
+    --chart-4: 38 92% 58%;
+    --chart-5: 0 84% 68%;
   }
 }
 

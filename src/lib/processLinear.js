@@ -31,6 +31,13 @@ export function processLinearData({ completed, inProgress }) {
     }))
     .sort((a, b) => b.age - a.age)
 
+  const completedByDay = {}
+  completed.forEach(i => {
+    if (!i.completedAt) return
+    const dk = new Date(i.completedAt).toISOString().slice(0, 10)
+    completedByDay[dk] = (completedByDay[dk] || 0) + 1
+  })
+
   return {
     completedCount:   completed.length,
     avgCycleTime:     avg(cycleTimes),
@@ -40,5 +47,6 @@ export function processLinearData({ completed, inProgress }) {
     completed14Count: completed14.length,
     cycleTime7:       ct7,
     cycleTime14:      ct14,
+    completedByDay,
   }
 }

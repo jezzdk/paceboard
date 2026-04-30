@@ -10,9 +10,10 @@ import { TokenPage, RepoPage } from "@/pages/SetupPage"
 import { DashboardPage } from "@/pages/DashboardPage"
 import { useTheme } from "@/hooks/useTheme"
 import { useGithubOAuth } from "@/hooks/useGithubOAuth"
+import { useLinearOAuth } from "@/hooks/useLinearOAuth"
 import { ghAll, loadMultiRepoDashboard } from "@/lib/github"
 import { processData } from "@/lib/process"
-import { loadLinearData } from "@/lib/linear"
+import { loadLinearData, getLinearTeams } from "@/lib/linear"
 import { processLinearData } from "@/lib/processLinear"
 import { cn } from "@/lib/utils"
 
@@ -62,14 +63,22 @@ const THEME_ICONS = { light: Sun, system: Monitor, dark: Moon }
 export default function App() {
   const { theme, setTheme, cycle } = useTheme()
   const oauth = useGithubOAuth()
+  const linearOauth = useLinearOAuth()
 
   // ── setup state ───────────────────────────────────────────────────────────
   const [step,        setStep]        = useState(initStep)
   const [allRepos,    setAllRepos]    = useState([])   // full repo objects from GitHub API
-  const [oauthStatus, setOauthStatus] = useState(
-    () => new URLSearchParams(window.location.search).has("code") ? "exchanging" : "idle"
-  )
+  const [oauthStatus, setOauthStatus] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    const isLinearCb = params.has("code") && !!sessionStorage.getItem("linear_oauth_state")
+    return params.has("code") && !isLinearCb ? "exchanging" : "idle"
+  })
   const [oauthError, setOauthError] = useState(null)
+
+  const [linearOauthStatus, setLinearOauthStatus] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    return params.has("code") && !!sessionStorage.getItem("linear_oauth_state") ? "exchanging" : "idle"
+  })
 
   const [token,          setToken]          = useState(() => ENV_TOKEN || localStorage.getItem(LS_TOKEN)       || "")
   const [selectedRepos,  setSelectedRepos]  = useState(() => getStoredRepos())
@@ -102,6 +111,30 @@ export default function App() {
       ghAll("https://api.github.com/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member", tok)
         .then(r => { setAllRepos(r.sort((a, b) => a.full_name.localeCompare(b.full_name))); setStep("repos") })
         .catch(() => { setOauthStatus("error"); setOauthError("Could not load repositories — please try again.") })
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── Linear OAuth callback ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (linearOauthStatus !== "exchanging") return
+    linearOauth.handleCallback().then(res => {
+      if (!res) { setLinearOauthStatus("idle"); return }
+      if (res.error) { setLinearOauthStatus("idle"); return }
+      const tok = res.token
+      localStorage.setItem(LS_LINEAR_TOKEN, tok)
+      setLinearToken(tok)
+      setLinearOauthStatus("idle")
+      getLinearTeams(tok)
+        .then(teams => {
+          if (teams.length === 1) {
+            localStorage.setItem(LS_LINEAR_TEAM, teams[0].id)
+            setLinearTeam(teams[0].id)
+          } else if (teams.length > 1) {
+            setShowSettings(true)
+          }
+        })
+        .catch(() => {})
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -206,8 +239,12 @@ export default function App() {
     }
 
     if (newLinToken !== linearToken) {
-      if (newLinToken) localStorage.setItem(LS_LINEAR_TOKEN, newLinToken)
-      else             localStorage.removeItem(LS_LINEAR_TOKEN)
+      if (newLinToken) {
+        localStorage.setItem(LS_LINEAR_TOKEN, newLinToken)
+      } else {
+        linearOauth.revokeToken(linearToken)
+        localStorage.removeItem(LS_LINEAR_TOKEN)
+      }
       setLinearToken(newLinToken)
     }
     if (newLinTeam !== linearTeam) {
@@ -234,6 +271,16 @@ export default function App() {
 
   // ── Theme icon ────────────────────────────────────────────────────────────
   const ThemeIcon = THEME_ICONS[theme] ?? Monitor
+
+  // ── OAuth exchange — show a loader while the code is being exchanged ─────
+  if (oauthStatus === "exchanging" || linearOauthStatus === "exchanging") {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center gap-4">
+        <div className="text-4xl animate-spin">◈</div>
+        <p className="text-lg font-semibold text-muted-foreground">Connecting…</p>
+      </div>
+    )
+  }
 
   // ── Setup screens ─────────────────────────────────────────────────────────
   if (step === "token") return (
@@ -383,6 +430,7 @@ export default function App() {
         currentLinearToken={linearToken}
         currentLinearTeam={linearTeam}
         onSave={onSettingsSave}
+        onConnectWithLinear={linearOauth.startRedirect}
       />
 
       <RepoPickerModal

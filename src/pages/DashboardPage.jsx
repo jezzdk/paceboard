@@ -1,6 +1,7 @@
+import { useMemo } from "react"
 import { Card, CardContent } from "@/components/ui/card"
-import { ThroughputChart, BarChart } from "@/components/charts"
-import { AgePill, LeadTimePill } from "@/components/pills"
+import { ThroughputChart, LeadTimeChart } from "@/components/charts"
+import { AgePill } from "@/components/pills"
 import { AuthorCell } from "@/components/Avatar"
 import { fmtH } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -31,11 +32,14 @@ function KpiCard({ label, value, sub, trend, warn, danger, source }) {
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
           {source === "linear" && (
-            <span className="text-[10px] font-mono text-violet-500 border border-violet-500/30 rounded px-1">Linear</span>
+            <span className="text-[10px] font-mono text-violet-500 border border-violet-500/30 rounded px-1">
+              Linear
+            </span>
           )}
         </div>
         <div className="flex items-end gap-2.5">
-          <span className={cn("text-4xl font-bold tabular-nums leading-none",
+          <span className={cn(
+            "text-4xl font-bold tabular-nums leading-none",
             danger && "text-destructive",
             warn   && "text-amber-500",
           )}>
@@ -49,19 +53,22 @@ function KpiCard({ label, value, sub, trend, warn, danger, source }) {
   )
 }
 
-// ── Section heading ───────────────────────────────────────────────────────────
+// ── Panel heading ─────────────────────────────────────────────────────────────
 
-function SectionLabel({ children, count, ok, source }) {
+function PanelLabel({ children, count, ok, source }) {
   return (
     <div className="flex items-center justify-between mb-3">
       <div className="flex items-center gap-2">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{children}</p>
         {source === "linear" && (
-          <span className="text-[10px] font-mono text-violet-500 border border-violet-500/30 rounded px-1">Linear</span>
+          <span className="text-[10px] font-mono text-violet-500 border border-violet-500/30 rounded px-1">
+            Linear
+          </span>
         )}
       </div>
       {count != null && (
-        <span className={cn("text-xs font-mono font-bold",
+        <span className={cn(
+          "text-xs font-mono font-bold",
           ok          ? "text-emerald-500"
           : count > 0 ? "text-amber-500"
           : "text-muted-foreground",
@@ -77,7 +84,7 @@ function Empty({ children }) {
   return <p className="text-sm text-muted-foreground text-center py-6">{children}</p>
 }
 
-// ── PR row ────────────────────────────────────────────────────────────────────
+// ── Row components ────────────────────────────────────────────────────────────
 
 function PRRow({ pr, pill }) {
   const href = pr.owner && pr.repoName
@@ -86,8 +93,12 @@ function PRRow({ pr, pill }) {
   return (
     <div className="flex items-center gap-2">
       <AuthorCell login={pr.author} />
-      <a href={href || "#"} target="_blank" rel="noreferrer"
-        className="text-xs text-muted-foreground truncate flex-1 hover:text-foreground hover:underline min-w-0">
+      <a
+        href={href || "#"}
+        target="_blank"
+        rel="noreferrer"
+        className="text-xs text-muted-foreground truncate flex-1 hover:text-foreground hover:underline min-w-0"
+      >
         {pr.title}
       </a>
       <div className="flex-shrink-0">{pill}</div>
@@ -95,16 +106,18 @@ function PRRow({ pr, pill }) {
   )
 }
 
-// ── Linear issue row ──────────────────────────────────────────────────────────
-
 function IssueRow({ issue }) {
   return (
     <div className="flex items-center gap-2">
       <span className="text-[10px] font-mono text-muted-foreground flex-shrink-0 w-14 truncate">
         {issue.identifier}
       </span>
-      <a href={issue.url || "#"} target="_blank" rel="noreferrer"
-        className="text-xs text-muted-foreground truncate flex-1 hover:text-foreground hover:underline min-w-0">
+      <a
+        href={issue.url || "#"}
+        target="_blank"
+        rel="noreferrer"
+        className="text-xs text-muted-foreground truncate flex-1 hover:text-foreground hover:underline min-w-0"
+      >
         {issue.title}
       </a>
       <div className="flex-shrink-0">
@@ -117,27 +130,35 @@ function IssueRow({ issue }) {
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
 export function DashboardPage({ result, linear }) {
-  const {
-    kpis, prevKpis, enriched, openPRStats, histogram,
-    mergeFreqDaily, mergeFreqWeekly,
-    period,
-  } = result
+  const { kpis, prevKpis, enriched, openPRStats, histogram, mergeFreqDaily, period } = result
 
-  const periodLabel = period >= 60
-    ? period === 180 ? "6mo" : `${period}d`
-    : `${period}d`
+  const periodLabel = period === 180 ? "6mo" : `${period}d`
+  const hasLinear   = !!linear
 
-  const agingPRs    = openPRStats.filter(p => p.age > 72 && !p.draft).sort((a, b) => b.age - a.age)
-  const noReviewer  = openPRStats.filter(p => !p.draft && p.reviewers.length === 0).sort((a, b) => b.age - a.age)
-  const recentMerged = [...enriched].sort((a, b) => new Date(b.mergedAt) - new Date(a.mergedAt)).slice(0, 8)
+  // Merge GitHub + Linear daily data into one series for the throughput chart
+  const throughputData = useMemo(() => {
+    const byDate = {}
+    mergeFreqDaily.forEach(({ date, count }) => {
+      byDate[date] = { date, prs: count, issues: 0 }
+    })
+    if (linear?.completedByDay) {
+      Object.entries(linear.completedByDay).forEach(([date, count]) => {
+        if (byDate[date]) byDate[date].issues = count
+        else byDate[date] = { date, prs: 0, issues: count }
+      })
+    }
+    return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date))
+  }, [mergeFreqDaily, linear])
 
-  const hasLinear = !!linear
+  // Attention panels
+  const agingPRs   = openPRStats.filter(p => p.age > 72 && !p.draft).sort((a, b) => b.age - a.age)
+  const reviewQueue = openPRStats.filter(p => !p.draft && p.reviewers.length === 0).sort((a, b) => b.age - a.age)
 
   return (
     <div className="p-6 space-y-5">
 
-      {/* ── KPI row ── */}
-      <div className={cn("grid gap-4", hasLinear ? "grid-cols-2 lg:grid-cols-6" : "grid-cols-2 lg:grid-cols-4")}>
+      {/* ── KPI strip ── */}
+      <div className={cn("grid gap-4", hasLinear ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-2 lg:grid-cols-4")}>
 
         <KpiCard
           label="PRs merged"
@@ -146,87 +167,82 @@ export function DashboardPage({ result, linear }) {
           trend={<Trend current={kpis.mergedCount} previous={prevKpis.mergedCount} higherIsBetter />}
         />
 
-        {hasLinear && (
-          <KpiCard
-            source="linear"
-            label="Issues closed"
-            value={linear.completedCount}
-            sub={`${linear.completed7Count} last 7d · ${linear.completed14Count} prior 7d`}
-            trend={<Trend current={linear.completed7Count} previous={linear.completed14Count} higherIsBetter />}
-          />
-        )}
-
         <KpiCard
           label="Avg lead time"
           value={fmtH(kpis.avgLeadTime)}
-          sub={prevKpis.avgLeadTime != null ? `vs ${fmtH(prevKpis.avgLeadTime)} prev ${periodLabel}` : "no prior data"}
+          sub={prevKpis.avgLeadTime != null
+            ? `vs ${fmtH(prevKpis.avgLeadTime)} prev ${periodLabel}`
+            : undefined}
           trend={<Trend current={kpis.avgLeadTime} previous={prevKpis.avgLeadTime} higherIsBetter={false} />}
         />
 
-        {hasLinear && (
-          <KpiCard
-            source="linear"
-            label="Avg cycle time"
-            value={fmtH(linear.avgCycleTime)}
-            sub={linear.cycleTime7 != null
-              ? `${fmtH(linear.cycleTime7)} last 7d · ${linear.cycleTime14 != null ? fmtH(linear.cycleTime14) + " prior 7d" : "no prior data"}`
-              : undefined}
-            trend={<Trend current={linear.cycleTime7} previous={linear.cycleTime14} higherIsBetter={false} />}
-          />
-        )}
-
-        <KpiCard
-          label="Open PRs"
-          value={kpis.openCount}
-          sub="currently open"
-          warn={kpis.openCount > 5 && kpis.openCount <= 10}
-          danger={kpis.openCount > 10}
-        />
-
         {hasLinear ? (
-          <KpiCard
-            source="linear"
-            label="In progress"
-            value={linear.wipCount}
-            sub="issues in flight"
-            warn={linear.wipCount > 10 && linear.wipCount <= 20}
-            danger={linear.wipCount > 20}
-          />
+          <>
+            <KpiCard
+              source="linear"
+              label="Issues closed"
+              value={linear.completedCount}
+              sub={`vs ${linear.completed14Count} prev ${periodLabel}`}
+              trend={<Trend current={linear.completed7Count} previous={linear.completed14Count} higherIsBetter />}
+            />
+            <KpiCard
+              source="linear"
+              label="Avg cycle time"
+              value={fmtH(linear.avgCycleTime)}
+              sub={linear.cycleTime14 != null
+                ? `vs ${fmtH(linear.cycleTime14)} prev 7d`
+                : undefined}
+              trend={<Trend current={linear.cycleTime7} previous={linear.cycleTime14} higherIsBetter={false} />}
+            />
+          </>
         ) : (
-          <KpiCard
-            label="Stale PRs"
-            value={kpis.stalePRs}
-            sub="> 3 days without merge"
-            warn={kpis.stalePRs > 0 && kpis.stalePRs <= 3}
-            danger={kpis.stalePRs > 3}
-          />
+          <>
+            <KpiCard
+              label="Open PRs"
+              value={kpis.openCount}
+              sub="currently open"
+              warn={kpis.openCount > 5 && kpis.openCount <= 10}
+              danger={kpis.openCount > 10}
+            />
+            <KpiCard
+              label="Stale PRs"
+              value={kpis.stalePRs}
+              sub="> 3 days without merge"
+              warn={kpis.stalePRs > 0 && kpis.stalePRs <= 3}
+              danger={kpis.stalePRs > 3}
+            />
+          </>
         )}
 
       </div>
 
-      {/* ── Charts row ── */}
+      {/* ── Charts ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2">
           <CardContent className="pt-5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">Merge throughput</p>
-            <ThroughputChart daily={mergeFreqDaily} weekly={mergeFreqWeekly} />
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+              Throughput
+            </p>
+            <ThroughputChart dailyData={throughputData} hasLinear={hasLinear} />
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">Lead time distribution</p>
-            <BarChart data={histogram} />
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+              Lead time distribution
+            </p>
+            <LeadTimeChart data={histogram} />
           </CardContent>
         </Card>
       </div>
 
-      {/* ── Attention row ── */}
-      <div className={cn("grid gap-4", hasLinear ? "grid-cols-1 lg:grid-cols-4" : "grid-cols-1 lg:grid-cols-3")}>
+      {/* ── Attention panels ── */}
+      <div className={cn("grid gap-4", hasLinear ? "grid-cols-1 lg:grid-cols-3" : "grid-cols-1 lg:grid-cols-2")}>
 
         {/* Aging PRs */}
         <Card className={agingPRs.length > 0 ? "border-amber-500/40" : ""}>
           <CardContent className="pt-5">
-            <SectionLabel count={agingPRs.length} ok={agingPRs.length === 0}>Aging PRs</SectionLabel>
+            <PanelLabel count={agingPRs.length} ok={agingPRs.length === 0}>Aging PRs</PanelLabel>
             {agingPRs.length === 0
               ? <Empty>No PRs older than 3 days</Empty>
               : (
@@ -239,15 +255,17 @@ export function DashboardPage({ result, linear }) {
           </CardContent>
         </Card>
 
-        {/* No reviewer */}
-        <Card className={noReviewer.length > 0 ? "border-destructive/40" : ""}>
+        {/* Review queue */}
+        <Card className={reviewQueue.length > 0 ? "border-destructive/40" : ""}>
           <CardContent className="pt-5">
-            <SectionLabel count={noReviewer.length} ok={noReviewer.length === 0}>No reviewer</SectionLabel>
-            {noReviewer.length === 0
+            <PanelLabel count={reviewQueue.length} ok={reviewQueue.length === 0}>
+              Review queue
+            </PanelLabel>
+            {reviewQueue.length === 0
               ? <Empty>All open PRs have reviewers</Empty>
               : (
                 <div className="space-y-2.5">
-                  {noReviewer.slice(0, 7).map(p => (
+                  {reviewQueue.slice(0, 7).map(p => (
                     <PRRow key={`${p.repo}-${p.number}`} pr={p} pill={<AgePill hours={p.age} />} />
                   ))}
                 </div>
@@ -255,13 +273,17 @@ export function DashboardPage({ result, linear }) {
           </CardContent>
         </Card>
 
-        {/* Blocked issues — only when Linear is connected */}
+        {/* Blocked issues — Linear only */}
         {hasLinear && (
           <Card className={linear.blockedIssues.length > 0 ? "border-destructive/40" : ""}>
             <CardContent className="pt-5">
-              <SectionLabel source="linear" count={linear.blockedIssues.length} ok={linear.blockedIssues.length === 0}>
+              <PanelLabel
+                source="linear"
+                count={linear.blockedIssues.length}
+                ok={linear.blockedIssues.length === 0}
+              >
                 Blocked
-              </SectionLabel>
+              </PanelLabel>
               {linear.blockedIssues.length === 0
                 ? <Empty>No blocked issues</Empty>
                 : (
@@ -274,22 +296,6 @@ export function DashboardPage({ result, linear }) {
             </CardContent>
           </Card>
         )}
-
-        {/* Recently merged */}
-        <Card>
-          <CardContent className="pt-5">
-            <SectionLabel>Recently merged</SectionLabel>
-            {recentMerged.length === 0
-              ? <Empty>No merged PRs in this period</Empty>
-              : (
-                <div className="space-y-2.5">
-                  {recentMerged.map(p => (
-                    <PRRow key={`${p.repo}-${p.number}`} pr={p} pill={<LeadTimePill hours={p.leadTime} />} />
-                  ))}
-                </div>
-              )}
-          </CardContent>
-        </Card>
 
       </div>
     </div>

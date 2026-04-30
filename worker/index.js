@@ -86,6 +86,70 @@ export default {
       return new Response(null, { status: 204, headers: corsHeaders(origin) });
     }
 
+    // POST /linear — exchange Linear OAuth code for token
+    if (request.method === "POST" && url.pathname === "/linear") {
+      let body;
+      try { body = await request.json(); } catch {
+        return new Response(JSON.stringify({ error: "invalid_json" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", ...corsHeaders(origin) },
+        });
+      }
+      const { code, redirect_uri } = body;
+      if (!code) {
+        return new Response(JSON.stringify({ error: "missing_code" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", ...corsHeaders(origin) },
+        });
+      }
+
+      const params = new URLSearchParams({
+        code,
+        redirect_uri: redirect_uri || "",
+        client_id: env.LINEAR_CLIENT_ID,
+        client_secret: env.LINEAR_CLIENT_SECRET,
+        grant_type: "authorization_code",
+      });
+
+      const res = await fetch("https://api.linear.app/oauth/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: params.toString(),
+      });
+
+      const data = await res.json();
+      return new Response(JSON.stringify(data), {
+        status: res.status,
+        headers: { "Content-Type": "application/json", ...corsHeaders(origin) },
+      });
+    }
+
+    // DELETE /linear/revoke — revoke a Linear OAuth token
+    if (request.method === "DELETE" && url.pathname === "/linear/revoke") {
+      let body;
+      try { body = await request.json(); } catch {
+        return new Response(JSON.stringify({ error: "invalid_json" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", ...corsHeaders(origin) },
+        });
+      }
+      const { token } = body;
+      if (!token) {
+        return new Response(JSON.stringify({ error: "missing_token" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", ...corsHeaders(origin) },
+        });
+      }
+
+      await fetch("https://api.linear.app/oauth/revoke", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ access_token: token }).toString(),
+      });
+
+      return new Response(null, { status: 204, headers: corsHeaders(origin) });
+    }
+
     return new Response("Not found", { status: 404 });
   },
 };

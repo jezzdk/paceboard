@@ -18,12 +18,3 @@ export function AgePill({ hours }) {
   return <Badge variant={variant} className="font-mono">{fmtH(hours)}</Badge>
 }
 
-export function SizePill({ size, add, del }) {
-  return <Badge variant={size.variant} title={`+${add} −${del}`} className="font-mono cursor-help">{size.label}</Badge>
-}
-
-export function StatusPill({ draft, age }) {
-  if (draft) return <Badge variant="secondary">Draft</Badge>
-  if (age > 72) return <Badge variant="danger">Stale</Badge>
-  return <Badge variant="success">Active</Badge>
-}

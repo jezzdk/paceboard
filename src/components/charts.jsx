@@ -1,97 +1,143 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
+import {
+  BarChart, Bar,
+  XAxis, YAxis,
+  CartesianGrid,
+  Tooltip, Legend,
+  ResponsiveContainer,
+} from "recharts"
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  ChartLegendContent,
+} from "@/components/ui/chart"
 import { cn } from "@/lib/utils"
 import { fmtDate } from "@/lib/format"
 
-export function BarChart({ data, valueKey = "count", labelKey = "label", color = "bg-primary" }) {
-  const [hov, setHov] = useState(null)
-  const max = Math.max(...data.map(d => d[valueKey]), 1)
-  return (
-    <div className="flex items-end gap-1.5 h-24">
-      {data.map((d, i) => (
-        <div key={i} className="flex flex-col items-center gap-1 flex-1 relative"
-          onMouseEnter={() => setHov(i)} onMouseLeave={() => setHov(null)}>
-          {hov === i && (
-            <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-foreground text-background text-[10px] font-mono px-1.5 py-0.5 rounded whitespace-nowrap z-10 pointer-events-none">
-              {d[valueKey]}
-            </div>
-          )}
-          <div
-            className={cn("w-full rounded-t transition-all", hov === i ? "opacity-80" : "", color, d[valueKey] === 0 && "opacity-20")}
-            style={{ height: `${(d[valueKey] / max) * 64}px`, minHeight: d[valueKey] > 0 ? 3 : 0 }}
-          />
-          <span className="text-[10px] text-muted-foreground whitespace-nowrap">{d[labelKey]}</span>
-        </div>
-      ))}
-    </div>
-  )
+// ── Throughput chart ──────────────────────────────────────────────────────────
+// dailyData: [{ date, prs, issues? }]  — issues present only when Linear connected
+
+const PR_COLOR     = "hsl(var(--chart-1))"
+const ISSUES_COLOR = "hsl(var(--chart-2))"
+
+const throughputConfig = {
+  prs:    { label: "PRs merged",    color: PR_COLOR     },
+  issues: { label: "Issues closed", color: ISSUES_COLOR },
 }
 
-export function ThroughputChart({ daily, weekly }) {
+function toWeekly(daily) {
+  const weeks = {}
+  daily.forEach(({ date, prs, issues = 0 }) => {
+    const d   = new Date(date)
+    const mon = new Date(d)
+    mon.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+    const key = mon.toISOString().slice(0, 10)
+    if (!weeks[key]) weeks[key] = { date: key, prs: 0, issues: 0 }
+    weeks[key].prs    += prs
+    weeks[key].issues += issues
+  })
+  return Object.values(weeks).sort((a, b) => a.date.localeCompare(b.date))
+}
+
+export function ThroughputChart({ dailyData, hasLinear }) {
   const [gran, setGran] = useState("weekly")
-  const [hov,  setHov]  = useState(null)
-  const data = gran === "daily" ? daily : weekly
-  const max  = Math.max(...data.map(d => d.count), 1)
-  const avgV = data.length ? (data.reduce((s,d) => s+d.count, 0) / data.length).toFixed(1) : "0"
-  const N    = data.length > 60 ? Math.ceil(data.length/18) : data.length > 28 ? 4 : data.length > 14 ? 2 : 1
+
+  const data = useMemo(
+    () => gran === "weekly" ? toWeekly(dailyData) : dailyData,
+    [dailyData, gran]
+  )
+
+  const interval = data.length > 20 ? Math.ceil(data.length / 8) - 1 : 0
 
   return (
     <div>
+      {/* Granularity toggle */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex gap-1 rounded-md bg-muted p-0.5">
-          {["daily","weekly"].map(g => (
-            <button key={g} onClick={() => setGran(g)}
-              className={cn("text-xs font-semibold px-2.5 py-1 rounded transition-colors",
-                gran === g ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+          {["daily", "weekly"].map(g => (
+            <button
+              key={g}
+              onClick={() => setGran(g)}
+              className={cn(
+                "text-xs font-semibold px-2.5 py-1 rounded transition-colors",
+                gran === g
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
               {g}
             </button>
           ))}
         </div>
-        <span className="text-xs text-muted-foreground font-mono">
-          {hov != null
-            ? <><span className="text-primary font-semibold">{data[hov]?.count}</span> PRs · {fmtDate(data[hov]?.date)}</>
-            : <><span className="text-primary font-semibold">{avgV}</span> avg/{gran === "daily" ? "day" : "week"}</>}
-        </span>
+        {hasLinear && (
+          <div className="flex items-center gap-3">
+            {[
+              { key: "prs",    label: "PRs merged",    color: PR_COLOR     },
+              { key: "issues", label: "Issues closed", color: ISSUES_COLOR },
+            ].map(s => (
+              <div key={s.key} className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: s.color }} />
+                <span className="text-[11px] text-muted-foreground">{s.label}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-      <div className="flex items-end gap-0.5 h-28 pb-6">
-        {data.map((d, i) => {
-          // Fix: give zero bars a minimum height of 2px so the daily chart is never blank
-          const h = Math.max((d.count / max) * 88, 2)
-          return (
-            <div key={i} className="flex-1 flex flex-col justify-end items-center h-[88px] relative cursor-default"
-              onMouseEnter={() => setHov(i)} onMouseLeave={() => setHov(null)}>
-              <div className={cn("w-full rounded-t transition-colors", hov === i ? "bg-primary/80" : d.count === 0 ? "bg-border" : "bg-primary")}
-                style={{ height: h }} />
-              {i % N === 0 && (
-                <span className="absolute -bottom-5 text-[10px] text-muted-foreground whitespace-nowrap left-1/2 -translate-x-1/2">
-                  {fmtDate(d.date)}
-                </span>
-              )}
-            </div>
-          )
-        })}
-      </div>
+
+      <ChartContainer config={throughputConfig} className="h-44">
+        <BarChart data={data} barGap={2} barCategoryGap="25%">
+          <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
+          <XAxis
+            dataKey="date"
+            tickLine={false}
+            axisLine={false}
+            tickMargin={8}
+            interval={interval}
+            tickFormatter={fmtDate}
+            tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+          />
+          <YAxis hide />
+          <ChartTooltip
+            cursor={{ fill: "hsl(var(--muted))", opacity: 0.5 }}
+            content={<ChartTooltipContent labelFormatter={fmtDate} />}
+          />
+          <Bar dataKey="prs" fill="var(--color-prs)" radius={[3, 3, 0, 0]} maxBarSize={32} />
+          {hasLinear && (
+            <Bar dataKey="issues" fill="var(--color-issues)" radius={[3, 3, 0, 0]} maxBarSize={32} />
+          )}
+        </BarChart>
+      </ChartContainer>
     </div>
   )
 }
 
-export function HeatmapCell({ value, max }) {
-  const pct = max > 0 ? value / max : 0
-  return (
-    <td title={`${value || 0} reviews`}
-      style={{ opacity: value === 0 ? 0.15 : 0.15 + pct * 0.85 }}
-      className="w-10 h-9 text-center text-xs font-mono bg-primary text-primary-foreground border border-background cursor-default select-none">
-      {value || ""}
-    </td>
-  )
+// ── Lead time distribution chart ──────────────────────────────────────────────
+// data: [{ label, count }]
+
+const leadTimeConfig = {
+  count: { label: "PRs", color: PR_COLOR },
 }
 
-export function SizeHeatmapCell({ value, max }) {
-  const pct = max > 0 ? value / max : 0
+export function LeadTimeChart({ data }) {
   return (
-    <td title={`${value || 0} PRs`}
-      style={{ opacity: value === 0 ? 0.12 : 0.15 + pct * 0.85 }}
-      className="w-10 h-9 text-center text-xs font-mono bg-violet-500 text-white border border-background cursor-default select-none">
-      {value || ""}
-    </td>
+    <ChartContainer config={leadTimeConfig} className="h-44">
+      <BarChart data={data} barCategoryGap="20%">
+        <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
+        <XAxis
+          dataKey="label"
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+        />
+        <YAxis hide />
+        <ChartTooltip
+          cursor={{ fill: "hsl(var(--muted))", opacity: 0.5 }}
+          content={<ChartTooltipContent hideLabel />}
+        />
+        <Bar dataKey="count" fill="var(--color-count)" radius={[3, 3, 0, 0]} maxBarSize={48} />
+      </BarChart>
+    </ChartContainer>
   )
 }

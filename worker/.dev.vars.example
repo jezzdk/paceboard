@@ -2,5 +2,12 @@
 # Copy this file to .dev.vars and fill in your values
 # .dev.vars is git-ignored — never commit it
 
-GITHUB_CLIENT_ID=your_dev_oauth_app_client_id
-GITHUB_CLIENT_SECRET=your_dev_oauth_app_client_secret
+# GitHub OAuth App — https://github.com/settings/developers
+# Callback URL (local): http://localhost:5173
+GITHUB_CLIENT_ID=your_github_oauth_app_client_id
+GITHUB_CLIENT_SECRET=your_github_oauth_app_client_secret
+
+# Linear OAuth App — https://linear.app/settings/api/applications (optional)
+# Callback URL (local): http://localhost:5173
+LINEAR_CLIENT_ID=your_linear_oauth_app_client_id
+LINEAR_CLIENT_SECRET=your_linear_oauth_app_client_secret
