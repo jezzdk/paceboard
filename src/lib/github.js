@@ -61,15 +61,34 @@ export async function ghAllMergedSince(baseUrl, token, since) {
   return all.filter(p => p.merged_at && new Date(p.merged_at) >= sinceDate)
 }
 
-// Fetch data for multiple repos, covering both the current and previous period in
-// a single API pass per repo. Returns merged arrays with _repo/_owner/_repoName tags.
-export async function loadMultiRepoDashboard(repos, token, sinceISO, prevSinceISO, onProgress) {
+/** @returns {Promise<boolean>} true if PR has no submitted reviews yet */
+async function prAwaitingFirstReview(owner, repoName, number, token) {
+  const base = "https://api.github.com"
+  const { data } = await ghFetch(
+    `${base}/repos/${owner}/${repoName}/pulls/${number}/reviews?per_page=30`,
+    token
+  )
+  if (!Array.isArray(data) || data.length === 0) return true
+  return false
+}
+
+async function mapInBatches(items, batchSize, fn) {
+  const out = []
+  for (let i = 0; i < items.length; i += batchSize) {
+    const chunk = items.slice(i, i + batchSize)
+    out.push(...(await Promise.all(chunk.map(fn))))
+  }
+  return out
+}
+
+// Fetch merged PRs since `sinceISO` plus open PRs; tags _repo/_owner/_repoName.
+// Open PRs get `_awaitingFirstReview` (no submitted reviews yet, non-draft only).
+export async function loadMultiRepoDashboard(repos, token, sinceISO, onProgress) {
   const base = "https://api.github.com"
   const total = repos.length
   let done = 0
 
-  const sinceDate    = new Date(sinceISO)
-  const prevSinceDate = new Date(prevSinceISO)
+  const sinceDate = new Date(sinceISO)
 
   const tag = (pr, repoSlug, owner, repoName) => ({
     ...pr,
@@ -81,12 +100,11 @@ export async function loadMultiRepoDashboard(repos, token, sinceISO, prevSinceIS
   const results = await Promise.all(repos.map(async (repoSlug) => {
     const [owner, repoName] = repoSlug.split("/")
 
-    // One pass back to prevSince covers both current and previous period
     const [allMerged, openPRs] = await Promise.all([
       ghAllMergedSince(
         `${base}/repos/${owner}/${repoName}/pulls?state=closed&per_page=100&sort=updated&direction=desc`,
         token,
-        prevSinceISO
+        sinceISO
       ),
       ghAll(
         `${base}/repos/${owner}/${repoName}/pulls?state=open&per_page=100&sort=updated&direction=desc`,
@@ -94,22 +112,33 @@ export async function loadMultiRepoDashboard(repos, token, sinceISO, prevSinceIS
       ),
     ])
 
-    const mergedPRs     = allMerged.filter(p => new Date(p.merged_at) >= sinceDate)
-                                   .map(p => tag(p, repoSlug, owner, repoName))
-    const prevMergedPRs = allMerged.filter(p =>
-      new Date(p.merged_at) >= prevSinceDate && new Date(p.merged_at) < sinceDate
-    ).map(p => tag(p, repoSlug, owner, repoName))
-    const openPRsTagged = openPRs.map(p => tag(p, repoSlug, owner, repoName))
+    const mergedPRs = allMerged
+      .filter(p => new Date(p.merged_at) >= sinceDate)
+      .map(p => tag(p, repoSlug, owner, repoName))
+
+    let openPRsTagged = openPRs.map(p => tag(p, repoSlug, owner, repoName))
+
+    const toCheck = openPRsTagged.filter(p => !p.draft)
+    const flags = await mapInBatches(toCheck, 8, async (p) => {
+      const awaiting = await prAwaitingFirstReview(owner, repoName, p.number, token)
+      return { number: p.number, repoSlug, awaiting }
+    })
+    const key = (n, slug) => `${slug}#${n}`
+    const awaitingSet = new Set(flags.filter(f => f.awaiting).map(f => key(f.number, f.repoSlug)))
+    openPRsTagged = openPRsTagged.map(p =>
+      awaitingSet.has(key(p.number, p._repo))
+        ? { ...p, _awaitingFirstReview: true }
+        : { ...p, _awaitingFirstReview: false }
+    )
 
     done++
     onProgress(`Fetching repos… (${done}/${total})`, Math.round((done / total) * 90))
 
-    return { mergedPRs, prevMergedPRs, openPRs: openPRsTagged }
+    return { mergedPRs, openPRs: openPRsTagged }
   }))
 
   return {
-    mergedPRs:     results.flatMap(r => r.mergedPRs),
-    prevMergedPRs: results.flatMap(r => r.prevMergedPRs),
-    openPRs:       results.flatMap(r => r.openPRs),
+    mergedPRs: results.flatMap(r => r.mergedPRs),
+    openPRs:   results.flatMap(r => r.openPRs),
   }
 }

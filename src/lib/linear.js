@@ -38,7 +38,7 @@ export async function getLinearTeams(token) {
 }
 
 const COMPLETED_QUERY = `
-  query($teamId: String!, $since: DateTime!, $after: String) {
+  query($teamId: ID!, $since: DateTimeOrDuration!, $after: String) {
     issues(
       first: 250
       after: $after
@@ -59,7 +59,7 @@ const COMPLETED_QUERY = `
 `
 
 const IN_PROGRESS_QUERY = `
-  query($teamId: String!, $after: String) {
+  query($teamId: ID!, $after: String) {
     issues(
       first: 250
       after: $after
@@ -71,7 +71,33 @@ const IN_PROGRESS_QUERY = `
       pageInfo { hasNextPage endCursor }
       nodes {
         id identifier title url
-        createdAt startedAt
+        createdAt startedAt completedAt
+        state { name type }
+        labels { nodes { name } }
+      }
+    }
+  }
+`
+
+/** Open issues: blocked label or blocked-like state name (any workflow column). */
+const BLOCKED_OPEN_QUERY = `
+  query($teamId: ID!, $after: String) {
+    issues(
+      first: 250
+      after: $after
+      filter: {
+        team: { id: { eq: $teamId } }
+        completedAt: { null: true }
+        or: [
+          { state: { name: { containsIgnoreCase: "block" } } },
+          { labels: { name: { containsIgnoreCase: "block" } } }
+        ]
+      }
+    ) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        id identifier title url
+        createdAt startedAt completedAt
         state { name type }
         labels { nodes { name } }
       }
@@ -80,9 +106,10 @@ const IN_PROGRESS_QUERY = `
 `
 
 export async function loadLinearData(token, teamId, since) {
-  const [completed, inProgress] = await Promise.all([
+  const [completed, inProgress, blockedOpen] = await Promise.all([
     paginate(COMPLETED_QUERY, { teamId, since }, token, d => d.issues),
     paginate(IN_PROGRESS_QUERY, { teamId }, token, d => d.issues),
+    paginate(BLOCKED_OPEN_QUERY, { teamId }, token, d => d.issues),
   ])
-  return { completed, inProgress }
+  return { completed, inProgress, blockedOpen }
 }

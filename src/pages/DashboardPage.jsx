@@ -6,10 +6,19 @@ import { AuthorCell } from "@/components/Avatar"
 import { fmtH } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
-// ── Trend arrow ───────────────────────────────────────────────────────────────
+// ── Trend arrow (this week vs same span last week) ───────────────────────────
 
 function Trend({ current, previous, higherIsBetter = true }) {
-  if (previous == null || current == null || previous === 0) return null
+  if (current == null || previous == null) return null
+  if (previous === 0) {
+    if (current === 0) return <span className="text-muted-foreground text-base">≈</span>
+    const good = higherIsBetter ? current > 0 : current < 0
+    return (
+      <span className={cn("text-base font-bold", good ? "text-emerald-500" : "text-destructive")}>
+        {higherIsBetter ? "↑" : "↓"}
+      </span>
+    )
+  }
   const pctChange = Math.abs(current - previous) / previous
   if (pctChange < 0.05) return <span className="text-muted-foreground text-base">≈</span>
   const improved = higherIsBetter ? current > previous : current < previous
@@ -22,12 +31,9 @@ function Trend({ current, previous, higherIsBetter = true }) {
 
 // ── KPI card ──────────────────────────────────────────────────────────────────
 
-function KpiCard({ label, value, sub, trend, warn, danger, source }) {
+function KpiCard({ label, value, sub, trend, source }) {
   return (
-    <Card className={cn(
-      danger && "border-destructive/60 bg-destructive/5",
-      warn   && "border-amber-500/60 bg-amber-500/5",
-    )}>
+    <Card>
       <CardContent className="pt-5 pb-5">
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
@@ -36,13 +42,14 @@ function KpiCard({ label, value, sub, trend, warn, danger, source }) {
               Linear
             </span>
           )}
+          {source === "github" && (
+            <span className="text-[10px] font-mono text-muted-foreground border border-border rounded px-1">
+              GitHub
+            </span>
+          )}
         </div>
         <div className="flex items-end gap-2.5">
-          <span className={cn(
-            "text-4xl font-bold tabular-nums leading-none",
-            danger && "text-destructive",
-            warn   && "text-amber-500",
-          )}>
+          <span className="text-4xl font-bold tabular-nums leading-none">
             {value}
           </span>
           {trend}
@@ -69,9 +76,7 @@ function PanelLabel({ children, count, ok, source }) {
       {count != null && (
         <span className={cn(
           "text-xs font-mono font-bold",
-          ok          ? "text-emerald-500"
-          : count > 0 ? "text-amber-500"
-          : "text-muted-foreground",
+          ok ? "text-emerald-500" : "text-destructive",
         )}>
           {ok ? "✓ clear" : count}
         </span>
@@ -130,19 +135,17 @@ function IssueRow({ issue }) {
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
 export function DashboardPage({ result, linear }) {
-  const { kpis, prevKpis, enriched, openPRStats, histogram, mergeFreqDaily, period } = result
+  const { kpis, prevKpis, openPRStats, histogram, mergeFreqDaily, weekLabel } = result
 
-  const periodLabel = period === 180 ? "6mo" : `${period}d`
-  const hasLinear   = !!linear
+  const hasLinear = !!linear
 
-  // Merge GitHub + Linear daily data into one series for the throughput chart
   const throughputData = useMemo(() => {
     const byDate = {}
     mergeFreqDaily.forEach(({ date, count }) => {
       byDate[date] = { date, prs: count, issues: 0 }
     })
-    if (linear?.completedByDay) {
-      Object.entries(linear.completedByDay).forEach(([date, count]) => {
+    if (linear?.issuesClosedByDay) {
+      linear.issuesClosedByDay.forEach(({ date, count }) => {
         if (byDate[date]) byDate[date].issues = count
         else byDate[date] = { date, prs: 0, issues: count }
       })
@@ -150,78 +153,73 @@ export function DashboardPage({ result, linear }) {
     return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date))
   }, [mergeFreqDaily, linear])
 
-  // Attention panels
-  const agingPRs   = openPRStats.filter(p => p.age > 72 && !p.draft).sort((a, b) => b.age - a.age)
-  const reviewQueue = openPRStats.filter(p => !p.draft && p.reviewers.length === 0).sort((a, b) => b.age - a.age)
+  const agingPRs = openPRStats.filter(p => p.age > 72 && !p.draft).sort((a, b) => b.age - a.age)
+  const reviewQueue = openPRStats
+    .filter(p => !p.draft && p.awaitingFirstReview)
+    .sort((a, b) => b.age - a.age)
+
+  const periodSub = (cur, prev, fmt = v => v) =>
+    prev != null ? `vs ${fmt(prev)} last week · ${weekLabel}` : `· ${weekLabel}`
 
   return (
     <div className="p-6 space-y-5">
 
-      {/* ── KPI strip ── */}
-      <div className={cn("grid gap-4", hasLinear ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-2 lg:grid-cols-4")}>
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
 
         <KpiCard
+          source="github"
           label="PRs merged"
           value={kpis.mergedCount}
-          sub={`vs ${prevKpis.mergedCount} prev ${periodLabel}`}
+          sub={periodSub(kpis.mergedCount, prevKpis.mergedCount)}
           trend={<Trend current={kpis.mergedCount} previous={prevKpis.mergedCount} higherIsBetter />}
         />
 
         <KpiCard
+          source="linear"
+          label="Issues closed"
+          value={hasLinear ? linear.issuesClosedWeek : "—"}
+          sub={hasLinear
+            ? periodSub(linear.issuesClosedWeek, linear.issuesClosedPrevWeek)
+            : "Connect Linear in settings"}
+          trend={hasLinear
+            ? <Trend current={linear.issuesClosedWeek} previous={linear.issuesClosedPrevWeek} higherIsBetter />
+            : null}
+        />
+
+        <KpiCard
+          source="github"
           label="Avg lead time"
-          value={fmtH(kpis.avgLeadTime)}
+          value={kpis.avgLeadTime != null ? fmtH(kpis.avgLeadTime) : "—"}
           sub={prevKpis.avgLeadTime != null
-            ? `vs ${fmtH(prevKpis.avgLeadTime)} prev ${periodLabel}`
-            : undefined}
+            ? periodSub(kpis.avgLeadTime, prevKpis.avgLeadTime, fmtH)
+            : `· ${weekLabel}`}
           trend={<Trend current={kpis.avgLeadTime} previous={prevKpis.avgLeadTime} higherIsBetter={false} />}
         />
 
-        {hasLinear ? (
-          <>
-            <KpiCard
-              source="linear"
-              label="Issues closed"
-              value={linear.completedCount}
-              sub={`vs ${linear.completed14Count} prev ${periodLabel}`}
-              trend={<Trend current={linear.completed7Count} previous={linear.completed14Count} higherIsBetter />}
-            />
-            <KpiCard
-              source="linear"
-              label="Avg cycle time"
-              value={fmtH(linear.avgCycleTime)}
-              sub={linear.cycleTime14 != null
-                ? `vs ${fmtH(linear.cycleTime14)} prev 7d`
-                : undefined}
-              trend={<Trend current={linear.cycleTime7} previous={linear.cycleTime14} higherIsBetter={false} />}
-            />
-          </>
-        ) : (
-          <>
-            <KpiCard
-              label="Open PRs"
-              value={kpis.openCount}
-              sub="currently open"
-              warn={kpis.openCount > 5 && kpis.openCount <= 10}
-              danger={kpis.openCount > 10}
-            />
-            <KpiCard
-              label="Stale PRs"
-              value={kpis.stalePRs}
-              sub="> 3 days without merge"
-              warn={kpis.stalePRs > 0 && kpis.stalePRs <= 3}
-              danger={kpis.stalePRs > 3}
-            />
-          </>
-        )}
+        <KpiCard
+          source="linear"
+          label="Avg cycle time"
+          value={hasLinear && linear.avgCycleTime != null ? fmtH(linear.avgCycleTime) : "—"}
+          sub={hasLinear && linear.avgCycleTimePrevWeek != null
+            ? periodSub(linear.avgCycleTime, linear.avgCycleTimePrevWeek, fmtH)
+            : hasLinear ? `· ${weekLabel}` : "Connect Linear in settings"}
+          trend={hasLinear
+            ? <Trend current={linear.avgCycleTime} previous={linear.avgCycleTimePrevWeek} higherIsBetter={false} />
+            : null}
+        />
 
       </div>
 
-      {/* ── Charts ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-2">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card>
           <CardContent className="pt-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
-              Throughput
+              Throughput trend (30 days)
+            </p>
+            <p className="text-[11px] text-muted-foreground/80 mb-2">
+              {hasLinear
+                ? "PRs merged per day (bars) and issues closed (line)."
+                : "PRs merged per day. Connect Linear to overlay issues closed."}
             </p>
             <ThroughputChart dailyData={throughputData} hasLinear={hasLinear} />
           </CardContent>
@@ -231,23 +229,29 @@ export function DashboardPage({ result, linear }) {
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
               Lead time distribution
             </p>
+            <p className="text-[11px] text-muted-foreground/80 mb-2">
+              Merged PRs (last 30 days): open → merge
+            </p>
             <LeadTimeChart data={histogram} />
           </CardContent>
         </Card>
       </div>
 
-      {/* ── Attention panels ── */}
-      <div className={cn("grid gap-4", hasLinear ? "grid-cols-1 lg:grid-cols-3" : "grid-cols-1 lg:grid-cols-2")}>
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
 
-        {/* Aging PRs */}
-        <Card className={agingPRs.length > 0 ? "border-amber-500/40" : ""}>
+        <Card className={cn(
+          agingPRs.length === 0
+            ? "border-emerald-500/35 bg-emerald-500/[0.03]"
+            : "border-destructive/50 bg-destructive/[0.04]",
+        )}>
           <CardContent className="pt-5">
             <PanelLabel count={agingPRs.length} ok={agingPRs.length === 0}>Aging PRs</PanelLabel>
+            <p className="text-[11px] text-muted-foreground mb-2">Open &gt; 3 days, not draft</p>
             {agingPRs.length === 0
-              ? <Empty>No PRs older than 3 days</Empty>
+              ? <Empty>None — all clear</Empty>
               : (
                 <div className="space-y-2.5">
-                  {agingPRs.slice(0, 7).map(p => (
+                  {agingPRs.slice(0, 10).map(p => (
                     <PRRow key={`${p.repo}-${p.number}`} pr={p} pill={<AgePill hours={p.age} />} />
                   ))}
                 </div>
@@ -255,37 +259,23 @@ export function DashboardPage({ result, linear }) {
           </CardContent>
         </Card>
 
-        {/* Review queue */}
-        <Card className={reviewQueue.length > 0 ? "border-destructive/40" : ""}>
-          <CardContent className="pt-5">
-            <PanelLabel count={reviewQueue.length} ok={reviewQueue.length === 0}>
-              Review queue
-            </PanelLabel>
-            {reviewQueue.length === 0
-              ? <Empty>All open PRs have reviewers</Empty>
-              : (
-                <div className="space-y-2.5">
-                  {reviewQueue.slice(0, 7).map(p => (
-                    <PRRow key={`${p.repo}-${p.number}`} pr={p} pill={<AgePill hours={p.age} />} />
-                  ))}
-                </div>
-              )}
-          </CardContent>
-        </Card>
-
-        {/* Blocked issues — Linear only */}
-        {hasLinear && (
-          <Card className={linear.blockedIssues.length > 0 ? "border-destructive/40" : ""}>
+        {hasLinear ? (
+          <Card className={cn(
+            linear.blockedIssues.length === 0
+              ? "border-emerald-500/35 bg-emerald-500/[0.03]"
+              : "border-destructive/50 bg-destructive/[0.04]",
+          )}>
             <CardContent className="pt-5">
               <PanelLabel
                 source="linear"
                 count={linear.blockedIssues.length}
                 ok={linear.blockedIssues.length === 0}
               >
-                Blocked
+                Blocked issues
               </PanelLabel>
+              <p className="text-[11px] text-muted-foreground mb-2">Blocked status or label</p>
               {linear.blockedIssues.length === 0
-                ? <Empty>No blocked issues</Empty>
+                ? <Empty>None — all clear</Empty>
                 : (
                   <div className="space-y-2.5">
                     {linear.blockedIssues.map(i => (
@@ -295,7 +285,37 @@ export function DashboardPage({ result, linear }) {
                 )}
             </CardContent>
           </Card>
+        ) : (
+          <Card className="border-dashed">
+            <CardContent className="pt-5">
+              <PanelLabel>Blocked issues</PanelLabel>
+              <p className="text-[11px] text-muted-foreground mb-2">Linear</p>
+              <Empty>Connect Linear to see blocked work</Empty>
+            </CardContent>
+          </Card>
         )}
+
+        <Card className={cn(
+          reviewQueue.length === 0
+            ? "border-emerald-500/35 bg-emerald-500/[0.03]"
+            : "border-destructive/50 bg-destructive/[0.04]",
+        )}>
+          <CardContent className="pt-5">
+            <PanelLabel count={reviewQueue.length} ok={reviewQueue.length === 0}>
+              Review queue
+            </PanelLabel>
+            <p className="text-[11px] text-muted-foreground mb-2">Open PRs with no submitted review yet</p>
+            {reviewQueue.length === 0
+              ? <Empty>None — all clear</Empty>
+              : (
+                <div className="space-y-2.5">
+                  {reviewQueue.slice(0, 10).map(p => (
+                    <PRRow key={`${p.repo}-${p.number}`} pr={p} pill={<AgePill hours={p.age} />} />
+                  ))}
+                </div>
+              )}
+          </CardContent>
+        </Card>
 
       </div>
     </div>

@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react"
-import { Sun, Monitor, Moon, Settings, Power } from "lucide-react"
+import { useState, useEffect, useCallback, useRef, useReducer } from "react"
+import { Sun, Monitor, Moon, Settings, Power, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
@@ -20,18 +20,12 @@ import { cn } from "@/lib/utils"
 const LS_TOKEN         = "paceboard_gh_token"
 const LS_REPOS         = "paceboard_gh_repos"      // JSON array of "owner/repo" strings
 const LS_REPO          = "paceboard_gh_repo"        // legacy single-repo key (migration only)
-const LS_PERIOD        = "paceboard_gh_period"
 const LS_POLL_INTERVAL = "paceboard_poll_interval"  // minutes (float)
 const LS_LINEAR_TOKEN  = "paceboard_linear_token"
 const LS_LINEAR_TEAM   = "paceboard_linear_team"
 
-const PERIODS = [
-  { label: "14d", days: 14  },
-  { label: "30d", days: 30  },
-  { label: "60d", days: 60  },
-  { label: "90d", days: 90  },
-  { label: "6mo", days: 180 },
-]
+/** GitHub merge history lookback (days); KPIs use calendar weeks inside this window. */
+const GITHUB_LOOKBACK_DAYS = 45
 
 const ENV_TOKEN = import.meta.env.VITE_GITHUB_TOKEN || ""
 
@@ -58,6 +52,17 @@ function initStep() {
 
 const THEME_ICONS = { light: Sun, system: Monitor, dark: Moon }
 
+function formatCountdown(totalSec) {
+  const s = Math.max(0, totalSec)
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  const r = s % 60
+  if (m < 60) return `${m}:${String(r).padStart(2, "0")}`
+  const h = Math.floor(m / 60)
+  const mr = m % 60
+  return `${h}:${String(mr).padStart(2, "0")}:${String(r).padStart(2, "0")}`
+}
+
 // ── App ───────────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -82,7 +87,6 @@ export default function App() {
 
   const [token,          setToken]          = useState(() => ENV_TOKEN || localStorage.getItem(LS_TOKEN)       || "")
   const [selectedRepos,  setSelectedRepos]  = useState(() => getStoredRepos())
-  const [period,         setPeriod]         = useState(() => parseInt(localStorage.getItem(LS_PERIOD) || "30"))
   const [pollInterval,   setPollInterval]   = useState(() => parseFloat(localStorage.getItem(LS_POLL_INTERVAL) || "1"))
   const [linearToken,    setLinearToken]    = useState(() => localStorage.getItem(LS_LINEAR_TOKEN)             || "")
   const [linearTeam,     setLinearTeam]     = useState(() => localStorage.getItem(LS_LINEAR_TEAM)              || "")
@@ -97,6 +101,19 @@ export default function App() {
   const [showDisconnect,  setShowDisconnect]  = useState(false)
   const [showRepoPicker,  setShowRepoPicker]  = useState(false)
   const [lastFetch,       setLastFetch]       = useState(null)
+  const [nextAutoAt,      setNextAutoAt]      = useState(null)
+
+  const pollTimerRef     = useRef(null)
+  const pollIntervalRef  = useRef(pollInterval)
+  pollIntervalRef.current = pollInterval
+  const runRef = useRef(() => Promise.resolve())
+
+  const [, tick] = useReducer(n => n + 1, 0)
+  useEffect(() => {
+    if (step !== "ready") return
+    const id = setInterval(() => tick(), 1000)
+    return () => clearInterval(id)
+  }, [step])
 
   // ── OAuth callback ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -151,16 +168,18 @@ export default function App() {
   // ── Core fetch ────────────────────────────────────────────────────────────
   const run = useCallback(async () => {
     if (selectedRepos.length === 0) return
-    const since     = new Date(Date.now() - period * 86_400_000).toISOString()
-    const prevSince = new Date(Date.now() - period * 2 * 86_400_000).toISOString()
+    clearTimeout(pollTimerRef.current)
+    pollTimerRef.current = null
+
+    const since = new Date(Date.now() - GITHUB_LOOKBACK_DAYS * 86_400_000).toISOString()
 
     setLoading(true); setError(null)
     try {
       const raw = await loadMultiRepoDashboard(
-        selectedRepos, token, since, prevSince,
+        selectedRepos, token, since,
         (label, pct) => setProgress({ label, pct })
       )
-      setResult({ ...processData(raw), repos: selectedRepos, period })
+      setResult({ ...processData(raw), repos: selectedRepos })
 
       if (linearToken && linearTeam) {
         setProgress({ pct: 100, label: "Fetching Linear data…" })
@@ -177,29 +196,36 @@ export default function App() {
       setError(e.message)
     } finally {
       setLoading(false)
+      const period = pollIntervalRef.current * 60 * 1000
+      setNextAutoAt(Date.now() + period)
+      pollTimerRef.current = setTimeout(() => {
+        void runRef.current()
+      }, period)
     }
-  }, [token, selectedRepos, period, linearToken, linearTeam])
+  }, [token, selectedRepos, linearToken, linearTeam])
 
-  // Auto-fetch when repos or period change (and we're in the ready state)
+  runRef.current = run
+
+  // Auto-fetch when repos or Linear connection change (ready state)
   const reposKey = selectedRepos.join(",")
+  const linearKey = `${linearToken}:${linearTeam}`
   const prevDepsRef = useRef(null)
   useEffect(() => {
     if (step !== "ready" || selectedRepos.length === 0) return
-    const key = `${reposKey}__${period}`
+    const key = `${reposKey}__${linearKey}`
     if (prevDepsRef.current === key) return
     prevDepsRef.current = key
     run()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reposKey, period, step])
+  }, [reposKey, linearKey, step])
 
-  // Polling
   useEffect(() => {
-    if (step !== "ready" || selectedRepos.length === 0) return
-    const ms = pollInterval * 60 * 1000
-    const id = setInterval(() => run(), ms)
-    return () => clearInterval(id)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, reposKey, pollInterval])
+    if (step !== "ready") {
+      clearTimeout(pollTimerRef.current)
+      pollTimerRef.current = null
+      setNextAutoAt(null)
+    }
+  }, [step])
 
   // ── Setup callbacks ───────────────────────────────────────────────────────
   function onTokenDone(tok, repoList) {
@@ -263,7 +289,7 @@ export default function App() {
 
   function onDisconnect() {
     oauth.revokeToken(token)
-    ;[LS_TOKEN, LS_REPOS, LS_REPO, LS_PERIOD, LS_LINEAR_TOKEN, LS_LINEAR_TEAM].forEach(k => localStorage.removeItem(k))
+    ;[LS_TOKEN, LS_REPOS, LS_REPO, LS_LINEAR_TOKEN, LS_LINEAR_TEAM].forEach(k => localStorage.removeItem(k))
     setToken(""); setSelectedRepos([]); setAllRepos([]); setResult(null); setLinearResult(null)
     setError(null); setOauthStatus("idle"); setOauthError(null)
     setShowDisconnect(false); setStep("token")
@@ -305,6 +331,9 @@ export default function App() {
     ? selectedRepos[0]
     : `${selectedRepos.length} repos`
 
+  const countdownSec =
+    nextAutoAt != null ? Math.max(0, Math.ceil((nextAutoAt - Date.now()) / 1000)) : null
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
 
@@ -316,23 +345,9 @@ export default function App() {
 
         <Separator orientation="vertical" className="h-5 mx-1" />
 
-        {/* Period selector */}
-        <div className="flex items-center gap-1 rounded-md bg-muted p-0.5">
-          {PERIODS.map(p => (
-            <button
-              key={p.label}
-              onClick={() => { setPeriod(p.days); localStorage.setItem(LS_PERIOD, p.days) }}
-              className={cn(
-                "text-xs font-semibold px-2.5 py-1 rounded transition-colors",
-                period === p.days
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          Week KPIs vs same span last week · 30-day charts
+        </span>
 
         <div className="ml-auto flex items-center gap-2">
           {linearToken && (
@@ -349,6 +364,35 @@ export default function App() {
           >
             {repoLabel}
           </button>
+
+          <Separator orientation="vertical" className="h-5" />
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 px-2.5 whitespace-nowrap"
+            onClick={() => run()}
+            disabled={loading}
+            title="Fetch latest data now. Parentheses show time until the next automatic refresh."
+            aria-label={
+              loading
+                ? "Refreshing dashboard"
+                : countdownSec != null
+                  ? `Refresh dashboard, next automatic refresh in ${formatCountdown(countdownSec)}`
+                  : "Refresh dashboard"
+            }
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5 shrink-0", loading && "animate-spin")} />
+            <span className="text-xs font-medium">
+              Refresh{" "}
+              <span className="font-mono tabular-nums text-muted-foreground">
+                (
+                {loading ? "…" : countdownSec != null ? formatCountdown(countdownSec) : "—"}
+                )
+              </span>
+            </span>
+          </Button>
 
           <Separator orientation="vertical" className="h-5" />
 
