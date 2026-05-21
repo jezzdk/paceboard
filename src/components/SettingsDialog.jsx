@@ -8,9 +8,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { verifyLinearToken, getLinearTeams } from "@/lib/linear";
+import { getLinearTeams } from "@/lib/linear";
 
 const LINEAR_CLIENT_ID = import.meta.env.VITE_LINEAR_CLIENT_ID || "";
 
@@ -41,54 +40,43 @@ export function SettingsDialog({
 }) {
   const [selectedTheme, setSelectedTheme] = useState(currentTheme);
   const [selectedPoll, setSelectedPoll] = useState(currentPollInterval);
-  const [linToken, setLinToken] = useState(currentLinearToken || "");
   const [linTeams, setLinTeams] = useState([]);
   const [linTeamId, setLinTeamId] = useState(currentLinearTeam || "");
-  const [linVerifying, setLinVerifying] = useState(false);
-  const [linConnected, setLinConnected] = useState(false);
+  const [linLoading, setLinLoading] = useState(false);
+  const [linConnected, setLinConnected] = useState(!!currentLinearToken);
   const [linError, setLinError] = useState(null);
 
   useEffect(() => {
     if (!open) return;
     setSelectedTheme(currentTheme);
     setSelectedPoll(currentPollInterval);
-    setLinToken(currentLinearToken || "");
     setLinTeamId(currentLinearTeam || "");
     setLinTeams([]);
-    setLinConnected(false);
+    setLinConnected(!!currentLinearToken);
     setLinError(null);
 
     if (currentLinearToken) {
-      setLinVerifying(true);
+      setLinLoading(true);
       getLinearTeams(currentLinearToken)
         .then((teams) => {
           setLinTeams(teams);
           setLinConnected(true);
+          if (teams.length === 1 && !currentLinearTeam) setLinTeamId(teams[0].id);
         })
-        .catch(() => {})
-        .finally(() => setLinVerifying(false));
+        .catch(() => {
+          setLinError("Could not load Linear teams. Reconnect if this persists.");
+        })
+        .finally(() => setLinLoading(false));
     }
-  }, [open]);
-
-  async function connectLinear() {
-    if (!linToken.trim()) return;
-    setLinVerifying(true);
-    setLinError(null);
-    try {
-      await verifyLinearToken(linToken.trim());
-      const teams = await getLinearTeams(linToken.trim());
-      setLinTeams(teams);
-      setLinConnected(true);
-      if (teams.length === 1) setLinTeamId(teams[0].id);
-    } catch {
-      setLinError("Could not connect — check your API key.");
-    } finally {
-      setLinVerifying(false);
-    }
-  }
+  }, [
+    open,
+    currentTheme,
+    currentPollInterval,
+    currentLinearToken,
+    currentLinearTeam,
+  ]);
 
   function disconnectLinear() {
-    setLinToken("");
     setLinTeamId("");
     setLinTeams([]);
     setLinConnected(false);
@@ -173,6 +161,9 @@ export function SettingsDialog({
                     Disconnect
                   </button>
                 </div>
+                {linLoading && (
+                  <p className="text-xs text-muted-foreground">Loading teams…</p>
+                )}
                 {linTeams.length > 1 && (
                   <div className="border rounded-lg overflow-hidden max-h-40 overflow-y-auto">
                     {linTeams.map((t) => (
@@ -211,64 +202,23 @@ export function SettingsDialog({
               </div>
             ) : (
               <div className="space-y-3">
-                {/* OAuth button */}
                 {LINEAR_CLIENT_ID && (
-                  <>
-                    <Button
-                      className="w-full gap-2"
-                      variant="outline"
-                      onClick={onConnectWithLinear}
-                    >
-                      Connect with Linear
-                    </Button>
-                    <div className="relative">
-                      <div className="absolute inset-0 flex items-center">
-                        <span className="w-full border-t" />
-                      </div>
-                      <div className="relative flex justify-center text-xs">
-                        <span className="bg-background px-2 text-muted-foreground">
-                          or enter an API key manually
-                        </span>
-                      </div>
-                    </div>
-                  </>
+                  <Button
+                    className="w-full gap-2"
+                    variant="outline"
+                    onClick={onConnectWithLinear}
+                  >
+                    Connect with Linear
+                  </Button>
                 )}
-
-                {/* Manual token entry */}
-                <div className="space-y-2">
-                  <div className="flex gap-2">
-                    <Input
-                      type="password"
-                      placeholder="lin_api_…"
-                      value={linToken}
-                      onChange={(e) => setLinToken(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && connectLinear()}
-                      className="font-mono text-xs"
-                    />
-                    <Button
-                      size="sm"
-                      onClick={connectLinear}
-                      disabled={linVerifying || !linToken.trim()}
-                    >
-                      {linVerifying ? "…" : "Connect"}
-                    </Button>
-                  </div>
-                  {!LINEAR_CLIENT_ID && (
-                    <a
-                      href="https://linear.app/settings/api"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block text-xs text-primary hover:underline"
-                    >
-                      Generate an API key at linear.app/settings/api ↗
-                    </a>
-                  )}
-                  {linError && (
-                    <p className="text-xs text-destructive">{linError}</p>
-                  )}
-                </div>
+                {!LINEAR_CLIENT_ID && (
+                  <p className="text-xs text-muted-foreground">
+                    Linear OAuth is not configured in this environment.
+                  </p>
+                )}
               </div>
             )}
+            {linError && <p className="text-xs text-destructive">{linError}</p>}
           </div>
         </div>
 
@@ -277,11 +227,12 @@ export function SettingsDialog({
             Cancel
           </Button>
           <Button
+            disabled={linConnected && linTeams.length > 1 && !linTeamId}
             onClick={() =>
               onSave({
                 theme: selectedTheme,
                 pollInterval: selectedPoll,
-                linearToken: linConnected ? linToken : "",
+                linearToken: linConnected ? currentLinearToken : "",
                 linearTeam: linConnected ? linTeamId : "",
               })
             }

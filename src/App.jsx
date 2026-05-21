@@ -232,8 +232,11 @@ export default function App() {
           const linRaw = await loadLinearData(linearToken, linearTeam, since);
           setLinearResult(processLinearData(linRaw));
         } catch (e) {
+          setLinearResult(null);
           console.warn("Linear fetch failed:", e.message);
         }
+      } else {
+        setLinearResult(null);
       }
 
       setLastFetch(new Date());
@@ -420,10 +423,6 @@ export default function App() {
         </div>
 
         <Separator orientation="vertical" className="h-5 mx-1" />
-
-        <span className="text-xs text-muted-foreground hidden sm:inline">
-          Week KPIs vs same span last week · 30-day charts
-        </span>
 
         <div className="ml-auto flex items-center gap-2">
           {linearToken && (
