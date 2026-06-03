@@ -164,7 +164,18 @@ The callback must exactly match the app's `window.location.origin`.
 
 ## Data & privacy
 
-Paceboard runs entirely in your browser. Your Linear API key and preferences are stored in `localStorage` only and never sent anywhere except `api.linear.app`.
+Paceboard runs entirely in your browser. There is **no backend database and no analytics or tracking**. Your Linear token and preferences live in `localStorage` only, and Linear data is fetched live on each refresh — it is rendered and discarded, never persisted or transmitted anywhere except `api.linear.app`. The only server component is a stateless Cloudflare Worker that exchanges an OAuth code for a token (so the client secret never reaches the browser); it stores nothing.
+
+### Personal data & GDPR
+
+Paceboard reads only the data it needs to render flow metrics: each member's Linear user ID, display name, and avatar URL (no email addresses are requested). This is still **personal data**, and the dashboard shows per-person metrics by name.
+
+If you display Paceboard on an office TV or other shared screen, you are surfacing identifiable performance data about employees. Depending on your jurisdiction (e.g. the EU/EEA under GDPR, or Denmark under the Data Protection Act) this may require:
+
+- a **lawful basis** for the processing (typically legitimate interest), and
+- **informing the affected employees** beforehand, per transparency obligations.
+
+Consider whether an aggregate or anonymized view would meet your needs. Paceboard does not store or share this data — but how you choose to *display* it is your responsibility as the controller.
 
 ### localStorage keys
 

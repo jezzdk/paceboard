@@ -28,13 +28,12 @@ export async function linearQuery(query, variables = {}) {
 export async function fetchWorkspaceMembers() {
   const data = await linearQuery(`{
     users(filter: { active: { eq: true } }, first: 250) {
-      nodes { id name displayName avatarUrl email }
+      nodes { id name displayName avatarUrl }
     }
   }`);
   return data.users.nodes.map((u) => ({
     id: u.id,
     name: u.displayName || u.name,
-    email: u.email || "",
     avatarUrl: u.avatarUrl || null,
   }));
 }

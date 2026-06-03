@@ -18,7 +18,7 @@ export async function verifyToken(authorization) {
       Authorization: authorization,
     },
     body: JSON.stringify({
-      query: "{ viewer { id name email } }",
+      query: "{ viewer { id name } }",
     }),
   });
   if (!res.ok) throw new Error(`Linear API returned ${res.status}`);

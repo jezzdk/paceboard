@@ -120,6 +120,15 @@
         </div>
         <TeamTable :flow="flow" :open-flow-drill="openFlowDrill" />
       </div>
+
+      <footer
+        class="text-center font-mono text-[10.5px] text-muted/70 leading-relaxed pt-[2px]"
+      >
+        Paceboard runs entirely in your browser — no servers, no database, no
+        tracking. Linear data is fetched live and never stored; your access
+        token stays in this browser's localStorage and is sent only to
+        api.linear.app.
+      </footer>
     </div>
 
     <FlowDrillOver :drill="flowDrill" @close="flowDrill = null" />
