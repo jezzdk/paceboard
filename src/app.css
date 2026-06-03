@@ -1,0 +1,200 @@
+@import "tailwindcss";
+
+/* ── Design tokens ─────────────────────────────────────────────────── */
+@theme {
+  --font-sans: "Geist", system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+
+  --color-bg: #eceef1;
+  --color-panel: #ffffff;
+  --color-panel-2: #f6f7f9;
+  --color-inset: #f1f2f5;
+  --color-ink: #1b1e24;
+  --color-muted: #697080;
+  --color-faint: #9aa3af;
+  --color-line: rgba(20, 24, 33, 0.1);
+  --color-line-2: rgba(20, 24, 33, 0.05);
+  --color-green: #2f9e57;
+  --color-green-bg: rgba(47, 158, 87, 0.1);
+  --color-amber: #bd840f;
+  --color-amber-bg: rgba(201, 138, 18, 0.13);
+  --color-red: #d2503b;
+  --color-red-bg: rgba(210, 80, 59, 0.1);
+  --color-blue: #4660d6;
+  --color-blue-bg: rgba(70, 96, 214, 0.1);
+
+  --radius-card: 12px;
+  --radius-badge: 8px;
+
+  --shadow-card:
+    0 1px 2px rgba(20, 24, 33, 0.04), 0 2px 8px rgba(20, 24, 33, 0.05);
+
+  --animate-pulse-dot: pulse-dot 2.4s infinite;
+  --animate-fade-in: fade-in 0.18s ease;
+  --animate-slide-in: slide-in 0.26s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* ── Dark theme overrides ──────────────────────────────────────────── */
+:root[data-theme="dark"] {
+  --color-bg: #14171c;
+  --color-panel: #1c2026;
+  --color-panel-2: #232830;
+  --color-inset: #2a2f38;
+  --color-ink: #e7eaf0;
+  --color-muted: #8a93a3;
+  --color-faint: #5d6675;
+  --color-line: rgba(230, 235, 245, 0.1);
+  --color-line-2: rgba(230, 235, 245, 0.05);
+  --color-green: #4cc47a;
+  --color-green-bg: rgba(76, 196, 122, 0.14);
+  --color-amber: #e0a83a;
+  --color-amber-bg: rgba(224, 168, 58, 0.16);
+  --color-red: #e36b56;
+  --color-red-bg: rgba(227, 107, 86, 0.14);
+  --color-blue: #7388e8;
+  --color-blue-bg: rgba(115, 136, 232, 0.16);
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* ── Base overrides ────────────────────────────────────────────────── */
+@layer base {
+  html,
+  body {
+    min-height: 100%;
+  }
+  body {
+    background-color: var(--color-bg);
+    font-feature-settings:
+      "tnum" 1,
+      "cv01" 1;
+    -webkit-font-smoothing: antialiased;
+  }
+  #app {
+    min-height: 100%;
+  }
+  button {
+    cursor: pointer;
+  }
+}
+
+/* ── Status color resolution ───────────────────────────────────────── */
+/*
+ * Setting --s and --s-bg on the element lets any descendant
+ * use s-text / s-bg / s-fill without repeating status logic.
+ */
+[data-status="healthy"] {
+  --s: var(--color-green);
+  --s-bg: var(--color-green-bg);
+}
+[data-status="warning"] {
+  --s: var(--color-amber);
+  --s-bg: var(--color-amber-bg);
+}
+[data-status="critical"] {
+  --s: var(--color-red);
+  --s-bg: var(--color-red-bg);
+}
+[data-status="none"] {
+  --s: var(--color-muted);
+  --s-bg: var(--color-line-2);
+}
+
+@utility s-text {
+  color: var(--s);
+}
+@utility s-bg {
+  background-color: var(--s-bg);
+}
+@utility s-fill {
+  background-color: var(--s);
+}
+@utility s-border {
+  border-color: var(--s);
+}
+
+/* ── Pseudo-element accent bars ────────────────────────────────────── */
+/*
+ * These three classes combine a ::before rule with a status variable.
+ * Too awkward as inline arbitrary values; kept as named utilities.
+ */
+@layer utilities {
+  /* Verdict banner: left-to-right tinted glow */
+  .verdict-glow::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(
+      90deg,
+      var(--s-bg),
+      var(--s-bg) 18%,
+      transparent 70%
+    );
+  }
+
+  /* KPI card: 3px top status stripe */
+  .kpi-stripe::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--s);
+    opacity: 0.85;
+  }
+  .kpi-stripe[data-status="none"]::before {
+    opacity: 0;
+  }
+
+  /* Tile (aging / review): 3px left status stripe */
+  .tile-stripe::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 12px;
+    bottom: 12px;
+    width: 3px;
+    border-radius: 3px;
+    background: var(--s);
+  }
+
+  /* State chips in drill-over */
+  .state-chip[data-state="inprogress"] {
+    background-color: var(--color-blue-bg);
+    color: var(--color-blue);
+  }
+  .state-chip[data-state="inreview"] {
+    background-color: var(--color-amber-bg);
+    color: var(--color-amber);
+  }
+  .state-chip[data-state="done"] {
+    background-color: var(--color-green-bg);
+    color: var(--color-green);
+  }
+}

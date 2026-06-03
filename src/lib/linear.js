@@ -1,115 +1,50 @@
-const LINEAR_API = "https://api.linear.app/graphql";
+const ENDPOINT = "https://api.linear.app/graphql";
+const STORAGE_KEY = "paceboard.linearToken";
 
-async function gql(query, variables = {}, token) {
-  const res = await fetch(LINEAR_API, {
+function getToken() {
+  const t = localStorage.getItem(STORAGE_KEY);
+  if (!t) throw new Error("Not connected to Linear");
+  return t;
+}
+
+export async function linearQuery(query, variables = {}) {
+  const res = await fetch(ENDPOINT, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: token },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: getToken(),
+    },
     body: JSON.stringify({ query, variables }),
   });
-  if (!res.ok) throw new Error(`Linear API ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`Linear API ${res.status}`);
   const json = await res.json();
   if (json.errors?.length) throw new Error(json.errors[0].message);
   return json.data;
 }
 
-async function paginate(query, variables, token, getPage) {
-  const items = [];
-  let after = null;
-  let page = 0;
-  do {
-    const data = await gql(query, { ...variables, after }, token);
-    const result = getPage(data);
-    items.push(...result.nodes);
-    after = result.pageInfo.hasNextPage ? result.pageInfo.endCursor : null;
-    page++;
-    if (page > 20) break;
-  } while (after);
-  return items;
+export async function fetchWorkspaceMembers() {
+  const data = await linearQuery(`{
+    users(filter: { active: { eq: true } }, first: 250) {
+      nodes { id name displayName avatarUrl email }
+    }
+  }`);
+  return data.users.nodes.map((u) => ({
+    id: u.id,
+    name: u.displayName || u.name,
+    email: u.email || "",
+    avatarUrl: u.avatarUrl || null,
+  }));
 }
 
-export async function verifyLinearToken(token) {
-  const data = await gql(`{ viewer { id name email } }`, {}, token);
-  return data.viewer;
-}
-
-export async function getLinearTeams(token) {
-  const data = await gql(`{ teams { nodes { id name key } } }`, {}, token);
-  return data.teams.nodes;
-}
-
-const COMPLETED_QUERY = `
-  query($teamId: ID!, $since: DateTimeOrDuration!, $after: String) {
-    issues(
-      first: 250
-      after: $after
-      filter: {
-        team: { id: { eq: $teamId } }
-        completedAt: { gte: $since }
-      }
-    ) {
-      pageInfo { hasNextPage endCursor }
-      nodes {
-        id identifier title url
-        createdAt startedAt completedAt
-        state { name type }
-        labels { nodes { name } }
-      }
-    }
+export async function linearPaginate(query, variables, pickConnection) {
+  const all = [];
+  let cursor = null;
+  for (let i = 0; i < 20; i++) {
+    const data = await linearQuery(query, { ...variables, after: cursor });
+    const conn = pickConnection(data);
+    all.push(...conn.nodes);
+    if (!conn.pageInfo.hasNextPage) return { nodes: all, truncated: false };
+    cursor = conn.pageInfo.endCursor;
   }
-`;
-
-const IN_PROGRESS_QUERY = `
-  query($teamId: ID!, $after: String) {
-    issues(
-      first: 250
-      after: $after
-      filter: {
-        team: { id: { eq: $teamId } }
-        state: { type: { in: ["started"] } }
-      }
-    ) {
-      pageInfo { hasNextPage endCursor }
-      nodes {
-        id identifier title url
-        createdAt startedAt completedAt
-        state { name type }
-        labels { nodes { name } }
-      }
-    }
-  }
-`;
-
-/** Open issues: blocked label or blocked-like state name (any workflow column). */
-const BLOCKED_OPEN_QUERY = `
-  query($teamId: ID!, $after: String) {
-    issues(
-      first: 250
-      after: $after
-      filter: {
-        team: { id: { eq: $teamId } }
-        completedAt: { null: true }
-        or: [
-          { state: { name: { containsIgnoreCase: "block" } } },
-          { labels: { name: { containsIgnoreCase: "block" } } }
-        ]
-      }
-    ) {
-      pageInfo { hasNextPage endCursor }
-      nodes {
-        id identifier title url
-        createdAt startedAt completedAt
-        state { name type }
-        labels { nodes { name } }
-      }
-    }
-  }
-`;
-
-export async function loadLinearData(token, teamId, since) {
-  const [completed, inProgress, blockedOpen] = await Promise.all([
-    paginate(COMPLETED_QUERY, { teamId, since }, token, (d) => d.issues),
-    paginate(IN_PROGRESS_QUERY, { teamId }, token, (d) => d.issues),
-    paginate(BLOCKED_OPEN_QUERY, { teamId }, token, (d) => d.issues),
-  ]);
-  return { completed, inProgress, blockedOpen };
+  return { nodes: all, truncated: true };
 }

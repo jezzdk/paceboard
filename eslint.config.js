@@ -1,24 +1,21 @@
 import js from "@eslint/js";
 import globals from "globals";
-import reactHooks from "eslint-plugin-react-hooks";
-import reactRefresh from "eslint-plugin-react-refresh";
+import pluginVue from "eslint-plugin-vue";
+import vueParser from "vue-eslint-parser";
 import { defineConfig, globalIgnores } from "eslint/config";
 
 export default defineConfig([
   globalIgnores(["dist"]),
   {
-    files: ["**/*.{js,jsx}"],
-    extends: [
-      js.configs.recommended,
-      reactHooks.configs.flat.recommended,
-      reactRefresh.configs.vite,
-    ],
+    files: ["**/*.{js,mjs,cjs,vue}"],
+    extends: [js.configs.recommended, ...pluginVue.configs["flat/recommended"]],
     languageOptions: {
-      ecmaVersion: 2020,
+      ecmaVersion: "latest",
+      sourceType: "module",
       globals: globals.browser,
+      parser: vueParser,
       parserOptions: {
         ecmaVersion: "latest",
-        ecmaFeatures: { jsx: true },
         sourceType: "module",
       },
     },
@@ -30,9 +27,6 @@ export default defineConfig([
           argsIgnorePattern: "^[A-Z_]",
         },
       ],
-      "react-hooks/purity": "off",
-      "react-hooks/set-state-in-effect": "off",
-      "react-refresh/only-export-components": "off",
     },
   },
 ]);
