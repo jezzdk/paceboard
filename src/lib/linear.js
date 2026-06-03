@@ -1,10 +1,13 @@
 const ENDPOINT = "https://api.linear.app/graphql";
 const STORAGE_KEY = "paceboard.linearToken";
+const SOURCE_KEY = "paceboard.linearTokenSource";
 
-function getToken() {
+// OAuth access tokens authenticate as `Bearer <token>`; personal API keys are
+// sent verbatim.
+function authHeader() {
   const t = localStorage.getItem(STORAGE_KEY);
   if (!t) throw new Error("Not connected to Linear");
-  return t;
+  return localStorage.getItem(SOURCE_KEY) === "oauth" ? `Bearer ${t}` : t;
 }
 
 export async function linearQuery(query, variables = {}) {
@@ -12,7 +15,7 @@ export async function linearQuery(query, variables = {}) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: getToken(),
+      Authorization: authHeader(),
     },
     body: JSON.stringify({ query, variables }),
   });

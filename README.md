@@ -45,15 +45,35 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) and paste a Linear API key into the setup screen.
+Open [http://localhost:5173](http://localhost:5173). Sign in with **Connect with Linear** (OAuth), or expand **Or enter a personal API key** to paste a key directly.
 
-### Linear API key
+### Linear OAuth (primary)
+
+OAuth needs a tiny Cloudflare Worker to exchange the authorization code for a token — the client secret never touches the browser. See [OAuth setup](#oauth-setup) to run it locally.
+
+### Linear API key (fallback)
 
 1. Go to [linear.app/settings/api](https://linear.app/settings/api)
 2. Create a **Personal API key**
 3. Paste it into the Paceboard setup screen
 
-The key is stored in your browser's `localStorage` and sent only to `api.linear.app`.
+Either way the token is stored in your browser's `localStorage` and sent only to `api.linear.app`.
+
+### OAuth setup
+
+1. Go to [linear.app/settings/api/applications](https://linear.app/settings/api/applications) → **New application**
+2. Set the callback URL to `http://localhost:5173` (and your production URL)
+3. Copy the **Client ID** → set `VITE_LINEAR_CLIENT_ID` in `.env`
+4. Copy the **Client Secret** → set `LINEAR_CLIENT_SECRET` in `worker/.dev.vars`
+
+Run the worker locally:
+
+```bash
+cd worker
+npx wrangler dev   # serves on http://localhost:8787
+```
+
+Point the frontend at it with `VITE_LINEAR_WORKER_URL=http://localhost:8787`. For production, `cd worker && npx wrangler deploy` and set `LINEAR_CLIENT_ID` / `LINEAR_CLIENT_SECRET` as Worker Secrets.
 
 ---
 
@@ -76,7 +96,11 @@ All optional. Vite exposes variables prefixed with `VITE_` or `LINEAR_` to the c
 
 | Variable | Description |
 |---|---|
+| `VITE_LINEAR_CLIENT_ID` | Linear OAuth app client ID — enables the "Connect with Linear" button. |
+| `VITE_LINEAR_WORKER_URL` | URL of the Cloudflare Worker that exchanges the OAuth code for a token. |
 | `LINEAR_API_TOKEN` | Skip the setup screen by baking a token into the build. Useful for private/kiosk deployments. **Never commit a real token.** |
+
+The worker reads its own secrets (`LINEAR_CLIENT_ID`, `LINEAR_CLIENT_SECRET`) from `worker/.dev.vars` locally — see `worker/.dev.vars.example`.
 
 Create a `.env.local` (gitignored) to set them locally.
 
@@ -100,7 +124,8 @@ Paceboard runs entirely in your browser. Your Linear API key and preferences are
 
 | Key | Description |
 |---|---|
-| `paceboard.linearToken` | Linear API key |
+| `paceboard.linearToken` | Linear token (OAuth access token or personal API key) |
+| `paceboard.linearTokenSource` | How the token was obtained (`oauth` or `pat`) — controls the `Authorization` header format and OAuth revocation on disconnect |
 | `paceboard.waitingPatterns` | User-defined label/state patterns that count as "waiting" time for flow efficiency |
 | `paceboard.pollIntervalMs` | Auto-refresh interval in milliseconds |
 | `paceboard.thresholds` | User-configured health thresholds (WIP, cycle time, issue age, review age, flow efficiency) |

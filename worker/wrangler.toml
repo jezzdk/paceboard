@@ -1,0 +1,8 @@
+name = "paceboard-auth"
+main = "index.js"
+compatibility_date = "2025-04-20"
+
+# LINEAR_CLIENT_ID and LINEAR_CLIENT_SECRET are provided via worker/.dev.vars
+# locally and as Worker Secrets in production:
+#   wrangler secret put LINEAR_CLIENT_ID
+#   wrangler secret put LINEAR_CLIENT_SECRET

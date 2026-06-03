@@ -1,0 +1,7 @@
+# Local secrets for the Cloudflare Worker (wrangler dev).
+# Copy this file to .dev.vars and fill in your values — .dev.vars is git-ignored.
+
+# Linear OAuth App — https://linear.app/settings/api/applications
+# Callback URL (local): http://localhost:5173
+LINEAR_CLIENT_ID=your_linear_oauth_app_client_id
+LINEAR_CLIENT_SECRET=your_linear_oauth_app_client_secret

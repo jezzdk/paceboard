@@ -152,7 +152,7 @@ import { useLinearAuth } from "./composables/useLinearAuth.js";
 import { useFlowData } from "./composables/useFlowData.js";
 import { useSettings } from "./composables/useSettings.js";
 
-const { isConnected, disconnect } = useLinearAuth();
+const { isConnected, disconnect, completeOAuth } = useLinearAuth();
 const flow = useFlowData();
 const { pollIntervalMs } = useSettings();
 
@@ -214,14 +214,18 @@ function schedulePoll() {
 }
 
 watch(pollIntervalMs, schedulePoll);
+watch(isConnected, (connected) => {
+  if (connected) refreshNow();
+});
 
-onMounted(() => {
+onMounted(async () => {
   tick();
   clockTimer = setInterval(tick, 30000);
   countdownTimer = setInterval(() => {
     nowMs.value = Date.now();
   }, 1000);
-  refreshNow();
+  await completeOAuth();
+  if (isConnected.value) refreshNow();
   schedulePoll();
 });
 onUnmounted(() => {
