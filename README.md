@@ -108,11 +108,57 @@ Create a `.env.local` (gitignored) to set them locally.
 
 ## Deployment
 
+A production deploy has two parts: the **static frontend** and the **OAuth worker**. Deploy the worker first so you have its URL for the frontend's `VITE_LINEAR_WORKER_URL`.
+
+### 1. Worker (Cloudflare)
+
+```bash
+cd worker
+npx wrangler deploy
+```
+
+Then set the worker's secrets (these are read from `worker/.dev.vars` locally, but **`.dev.vars` is not deployed** — you must set them as Worker Secrets):
+
+```bash
+npx wrangler secret put LINEAR_CLIENT_ID
+npx wrangler secret put LINEAR_CLIENT_SECRET
+```
+
+| Worker secret | Where to get it |
+|---|---|
+| `LINEAR_CLIENT_ID` | Linear OAuth app → Client ID |
+| `LINEAR_CLIENT_SECRET` | Linear OAuth app → Client Secret |
+
+`wrangler deploy` prints the worker URL (e.g. `https://paceboard-auth.<subdomain>.workers.dev`). Add your production origin to `ALLOWED_ORIGINS` in [`worker/index.js`](worker/index.js) (it ships with `https://paceboard.dev` and `http://localhost:5173`), and redeploy if you changed it.
+
+### 2. Frontend (any static host)
+
+Set the build-time env vars in your host's dashboard (Cloudflare Pages, Vercel, Netlify, …), then build:
+
 ```bash
 npm run build
 ```
 
-Deploy `dist/` to any static host — Cloudflare Pages, Vercel, Netlify, or plain nginx. No server-side rendering, no API routes.
+| Build env var | Value |
+|---|---|
+| `VITE_LINEAR_CLIENT_ID` | Linear OAuth app client ID (public — safe to expose) |
+| `VITE_LINEAR_WORKER_URL` | The deployed worker URL from step 1 |
+| `LINEAR_API_TOKEN` | *(optional)* bakes in a token and skips the setup screen — never commit a real one |
+
+> These are inlined at **build time**, not read at runtime. Rebuild after changing them.
+
+Deploy the resulting `dist/` to any static host — no server-side rendering, no API routes.
+
+### 3. Linear OAuth app
+
+In your [Linear OAuth app](https://linear.app/settings/api/applications), register the callback URLs for every origin you serve from — both production and local:
+
+```
+https://your-production-domain
+http://localhost:5173
+```
+
+The callback must exactly match the app's `window.location.origin`.
 
 ---
 
