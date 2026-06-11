@@ -3,7 +3,13 @@ import { useLinearOAuth, hasPendingLinearCallback } from "./useLinearOAuth.js";
 
 const STORAGE_KEY = "paceboard.linearToken";
 const SOURCE_KEY = "paceboard.linearTokenSource";
+const REFRESH_KEY = "paceboard.linearRefreshToken";
+const EXPIRY_KEY = "paceboard.linearTokenExpiresAt";
 const ENV_TOKEN = import.meta.env.LINEAR_API_TOKEN || "";
+
+// Refresh once the access token has less than an hour of life left, comfortably
+// ahead of the longest poll interval so a fetch never races an expiring token.
+const REFRESH_MARGIN_MS = 60 * 60 * 1000;
 
 const token = ref(ENV_TOKEN || localStorage.getItem(STORAGE_KEY) || "");
 const viewer = ref(null);
@@ -46,6 +52,36 @@ export function useLinearAuth() {
     oauth.startRedirect();
   }
 
+  function persistOAuthTokens({ token: t, refreshToken, expiresIn }) {
+    token.value = t;
+    localStorage.setItem(STORAGE_KEY, t);
+    localStorage.setItem(SOURCE_KEY, "oauth");
+    if (refreshToken) localStorage.setItem(REFRESH_KEY, refreshToken);
+    if (expiresIn)
+      localStorage.setItem(EXPIRY_KEY, String(Date.now() + expiresIn * 1000));
+  }
+
+  // Proactively swaps a near-expired OAuth token for a fresh one before it can
+  // 401. Returns false (and disconnects) only when the refresh itself fails, so
+  // callers can skip a doomed fetch. PATs and pre-refresh sessions are no-ops.
+  async function ensureFreshToken() {
+    if (localStorage.getItem(SOURCE_KEY) !== "oauth") return true;
+
+    const refreshToken = localStorage.getItem(REFRESH_KEY);
+    const expiresAt = Number(localStorage.getItem(EXPIRY_KEY)) || 0;
+    if (!refreshToken || !expiresAt) return true;
+    if (Date.now() < expiresAt - REFRESH_MARGIN_MS) return true;
+
+    const res = await oauth.refreshTokens(refreshToken);
+    if (res.error) {
+      disconnect();
+      oauthError.value = res.error;
+      return false;
+    }
+    persistOAuthTokens(res);
+    return true;
+  }
+
   // Completes an in-progress OAuth redirect, if the current URL carries one.
   async function completeOAuth() {
     if (oauthStatus.value !== "exchanging") return;
@@ -61,9 +97,7 @@ export function useLinearAuth() {
       return;
     }
 
-    token.value = res.token;
-    localStorage.setItem(STORAGE_KEY, res.token);
-    localStorage.setItem(SOURCE_KEY, "oauth");
+    persistOAuthTokens(res);
     oauthStatus.value = "idle";
   }
 
@@ -75,6 +109,8 @@ export function useLinearAuth() {
     viewer.value = null;
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(SOURCE_KEY);
+    localStorage.removeItem(REFRESH_KEY);
+    localStorage.removeItem(EXPIRY_KEY);
   }
 
   return {
@@ -87,6 +123,7 @@ export function useLinearAuth() {
     connect,
     startOAuth,
     completeOAuth,
+    ensureFreshToken,
     disconnect,
   };
 }

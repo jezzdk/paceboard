@@ -161,7 +161,8 @@ import { useLinearAuth } from "./composables/useLinearAuth.js";
 import { useFlowData } from "./composables/useFlowData.js";
 import { useSettings } from "./composables/useSettings.js";
 
-const { isConnected, disconnect, completeOAuth } = useLinearAuth();
+const { isConnected, disconnect, completeOAuth, ensureFreshToken } =
+  useLinearAuth();
 const flow = useFlowData();
 const { pollIntervalMs } = useSettings();
 
@@ -212,7 +213,7 @@ const secondsUntilRefresh = computed(() =>
 );
 
 async function refreshNow() {
-  await flow.refresh();
+  if (await ensureFreshToken()) await flow.refresh();
   nextRefreshAt.value = Date.now() + pollIntervalMs.value;
 }
 

@@ -54,6 +54,35 @@ export default {
       return json(await res.json(), res.status, origin);
     }
 
+    // POST /linear/refresh — exchange a refresh token for a fresh access token
+    if (request.method === "POST" && url.pathname === "/linear/refresh") {
+      let body;
+      try {
+        body = await request.json();
+      } catch {
+        return json({ error: "invalid_json" }, 400, origin);
+      }
+
+      const { refresh_token } = body;
+      if (!refresh_token)
+        return json({ error: "missing_refresh_token" }, 400, origin);
+
+      const params = new URLSearchParams({
+        refresh_token,
+        client_id: env.LINEAR_CLIENT_ID,
+        client_secret: env.LINEAR_CLIENT_SECRET,
+        grant_type: "refresh_token",
+      });
+
+      const res = await fetch("https://api.linear.app/oauth/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: params.toString(),
+      });
+
+      return json(await res.json(), res.status, origin);
+    }
+
     // DELETE /linear/revoke — revoke a Linear OAuth access token
     if (request.method === "DELETE" && url.pathname === "/linear/revoke") {
       let body;
